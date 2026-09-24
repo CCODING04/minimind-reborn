@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# 训练产物与数据（数据根目录走环境变量，本目录只放代码）
+out/
+checkpoints/
+runs/
+*.pth
+*.safetensors
+
+# 指标与日志
+metrics.jsonl
+train.log

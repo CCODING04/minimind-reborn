@@ -1,0 +1,65 @@
+[project]
+name = "minimind-reborn"
+version = "0.1.0"
+description = "MiniMind 的工程化重构：以训练项目形态（ml-dev-spec）复现 pretrain/SFT/DPO/RL 全流程"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # 核心依赖准入：没有它们 import 主包即失败。版本夹逼，排除已知坏版本。
+    "torch>=2.14,<3",
+    "transformers>=5.16,<6",
+]
+
+[project.optional-dependencies]
+# 可选能力 extras 化：没有它某功能失败 → 可选依赖，不进核心
+metrics = [
+    "tensorboard>=2.19",
+    "swanlab>=0.9.8",
+]
+serving = [
+    "fastapi>=0.120",
+    "uvicorn>=0.38",
+]
+download = [
+    "modelscope>=1.40",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-timeout>=2.3",
+    "ruff==0.14.0",
+]
+
+[tool.uv]
+# 中国网络环境：默认 pypi 走清华镜像；torch 用镜像自带的 CUDA 构建（驱动 595.84 支持 CUDA 13.2，兼容全部 cu12x wheel）
+# 装完必跑：uv run python tools/verify_env.py（见 env-dependencies §2）
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 119
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    # 行内小写别名等历史习惯不在重构范围，按需补充并写明理由
+]
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py 只做再导出：未使用的 import 是再导出语义
+"src/minimind_reborn/**/__init__.py" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+timeout = 300
+markers = [
+    "slow: 需要真权重或长训练，夜间/手动触发（testing-quality §2）",
+    "gpu: 需要 CUDA 设备，无卡环境自动跳过",
+]
