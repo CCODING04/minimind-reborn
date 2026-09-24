@@ -38,7 +38,9 @@ class NullBackend:
 
 
 class JSONLBackend:
-    """本地 jsonl 兜底：(step, key, value) 逐行追加，永不可关。"""
+    """本地 jsonl 兜底：(step, key, value) 逐行追加。
+
+    close() 由 MetricLogger 在训练结束时统一调用（关闭句柄，已 flush 记录不受影响）。"""
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -66,7 +68,7 @@ class TensorBoardBackend:
         except ImportError:
             warning_once(logger, "tb-missing", "tensorboard 未安装，metrics 配置中的 tensorboard 后端被跳过")
             raise
-        self.writer = SummaryWriter(log_dir=str(run_dir))
+        self.writer = SummaryWriter(log_dir=str(Path(run_dir) / "tensorboard"))  # 事件文件与四件套分离
 
     def log_scalar(self, key: str, value: float, step: int) -> None:
         self.writer.add_scalar(key, value, step)

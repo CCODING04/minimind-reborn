@@ -7,7 +7,7 @@ torch 原生引擎用于单卡/小模型，sglang HTTP 引擎用于加速大规�
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 import torch
 from torch import Tensor
@@ -143,7 +143,7 @@ class SGLangRolloutEngine:
         for ids, mask in zip(prompt_ids, attention_mask, strict=False):
             input_ids_list.append(ids[mask.bool()].tolist())
         all_input_ids = [ids for ids in input_ids_list for _ in range(num_generations)]
-        payload = {
+        payload: dict[str, Any] = {
             "input_ids": all_input_ids,
             "sampling_params": {
                 "temperature": temperature,
