@@ -1,0 +1,27 @@
+{
+  "pretrain_t2t_mini": {
+    "file": "pretrain_t2t_mini.jsonl",
+    "kind": "pretrain",
+    "description": "预训练语料（text 字段），MiniMind 官方 mini 版约 1.2GB"
+  },
+  "sft_t2t_mini": {
+    "file": "sft_t2t_mini.jsonl",
+    "kind": "sft",
+    "description": "SFT 对话语料（conversations 字段，支持 tools/reasoning_content）"
+  },
+  "dpo_mini": {
+    "file": "dpo.jsonl",
+    "kind": "dpo",
+    "description": "DPO 偏好对（chosen/rejected 各为消息列表）"
+  },
+  "rlaif_mini": {
+    "file": "rlaif.jsonl",
+    "kind": "rlaif",
+    "description": "RL 系提示集（conversations，最后一轮 assistant 回复被去掉）"
+  },
+  "agent_rl_mini": {
+    "file": "agent_rl.jsonl",
+    "kind": "agent",
+    "description": "Agent RL 轨迹（conversations + tools + gt 真值）"
+  }
+}
