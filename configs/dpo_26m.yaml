@@ -1,0 +1,16 @@
+# 26M DPO 偏好对齐（基于 SFT 权重）
+stage: dpo
+data:
+  dataset: dpo_mini
+  max_seq_len: 1024
+  num_workers: 8
+train:
+  epochs: 1
+  batch_size: 4
+  learning_rate: 4.0e-8    # ≤5e-8 防遗忘（官方注释）
+  dtype: bf16
+  init_from: full_sft
+  save_interval_steps: 200
+  log_interval: 20
+dpo:
+  beta: 0.15

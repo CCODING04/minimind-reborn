@@ -1,0 +1,16 @@
+# 26M 全参数 SFT（基于 pretrain 权重）
+stage: sft
+data:
+  dataset: sft_t2t_mini
+  max_seq_len: 768
+  eval_ratio: 0.005
+  num_workers: 8
+train:
+  epochs: 2
+  batch_size: 16
+  gradient_accumulation_steps: 1
+  learning_rate: 1.0e-5    # SFT 用小 lr 防灾难性遗忘（官方推荐）
+  dtype: bf16
+  init_from: pretrain      # 严格加载 pretrain 产物
+  save_interval_steps: 500
+  log_interval: 50

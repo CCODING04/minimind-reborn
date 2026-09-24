@@ -1,0 +1,16 @@
+# 26M dense 预训练配方（hidden 768 × 8 层，与官方 minimind 26M 对齐）
+# 默认值全部在 src/minimind_reborn/configuration/schemas.py，本文件只写差异
+stage: pretrain
+data:
+  dataset: pretrain_t2t_mini
+  max_seq_len: 340        # 中文 1 token ≈ 1.5~1.7 字符
+  eval_ratio: 0.005       # 尾部 0.5% 做验证集，观测过拟合
+  num_workers: 8
+train:
+  epochs: 2
+  batch_size: 32
+  gradient_accumulation_steps: 8   # DDP 下等效 batch = 32 × world × 8
+  learning_rate: 5.0e-4
+  dtype: bf16
+  save_interval_steps: 1000
+  log_interval: 50

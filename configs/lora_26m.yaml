@@ -1,0 +1,16 @@
+# LoRA 轻量微调（适配器只存 lora 权重）
+stage: lora
+data:
+  dataset: sft_t2t_mini
+  max_seq_len: 340
+  eval_ratio: 0.005
+train:
+  epochs: 2
+  batch_size: 32
+  learning_rate: 1.0e-4
+  dtype: bf16
+  init_from: full_sft
+  log_interval: 20
+lora:
+  rank: 16
+  lora_name: lora_reborn

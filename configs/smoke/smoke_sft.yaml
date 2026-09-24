@@ -1,0 +1,9 @@
+stage: sft
+data: {dataset: sft_t2t_mini, max_seq_len: 256, eval_ratio: 0.001, eval_iters: 2, num_workers: 2}
+train:
+  max_steps: 6
+  batch_size: 4
+  log_interval: 2
+  save_interval_steps: 100
+  init_from: null
+model: {hidden_size: 64, num_hidden_layers: 2, num_attention_heads: 4, num_key_value_heads: 2}

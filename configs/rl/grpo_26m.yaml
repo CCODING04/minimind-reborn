@@ -1,0 +1,20 @@
+# GRPO 组相对策略优化（规则奖励；要接外部 RM 填 rl.reward_model_path）
+stage: grpo
+data:
+  dataset: rlaif_mini
+  max_seq_len: 768
+train:
+  epochs: 1
+  batch_size: 2
+  learning_rate: 3.0e-7
+  dtype: bf16
+  init_from: full_sft
+  save_interval_steps: 10
+  log_interval: 1
+rl:
+  num_generations: 6
+  beta: 0.1
+  loss_type: cispo
+  max_gen_len: 256
+  thinking_ratio: 0.9
+  reward_model_path: ""    # 空 = 纯规则奖励（无 RM 依赖，冒烟可用）

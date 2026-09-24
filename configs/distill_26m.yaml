@@ -1,0 +1,20 @@
+# 同构自蒸馏（teacher=pretrain 权重，student 从 SFT 权重继续）——对照官方 distill 配方
+stage: distill
+data:
+  dataset: sft_t2t_mini
+  max_seq_len: 340
+  eval_ratio: 0.005
+train:
+  epochs: 2
+  batch_size: 32
+  learning_rate: 5.0e-6
+  dtype: bf16
+  init_from: full_sft
+  save_interval_steps: 500
+  log_interval: 50
+distill:
+  teacher_weight: pretrain
+  teacher_hidden_size: 768
+  teacher_num_layers: 8
+  alpha: 0.5               # 总损失 = 0.5·CE + 0.5·KL
+  temperature: 1.5         # 推荐 1.0~2.0
