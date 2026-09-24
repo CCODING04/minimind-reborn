@@ -69,6 +69,8 @@ class MiniMindModel(nn.Module):
         )
         self.register_buffer("freqs_cos", freqs_cos, persistent=False)  # 只依赖 config，不进 state_dict
         self.register_buffer("freqs_sin", freqs_sin, persistent=False)
+        self.freqs_cos: torch.Tensor
+        self.freqs_sin: torch.Tensor
 
     def _rebuild_rope_if_lost(self, device: torch.device, dtype: torch.dtype) -> None:
         """transformers>=5.x meta-device 初始化会丢非持久 buffer（全 0 判据）——重建一次。
@@ -82,8 +84,10 @@ class MiniMindModel(nn.Module):
                 rope_base=self.config.rope_theta,
                 rope_scaling=self.config.rope_scaling,
             )
-            self.freqs_cos = freqs_cos.to(device=device, dtype=dtype)
-            self.freqs_sin = freqs_sin.to(device=device, dtype=dtype)
+            self.register_buffer(
+                "freqs_cos", freqs_cos.to(device=device, dtype=dtype), persistent=False
+            )  # 重新注册（覆盖 buffer）
+            self.register_buffer("freqs_sin", freqs_sin.to(device=device, dtype=dtype), persistent=False)
 
     def forward(
         self,
@@ -162,4 +166,9 @@ class MiniMindForCausalLM(PreTrainedModel):
             loss = F.cross_entropy(
                 shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1), ignore_index=-100
             )
-        return MoeCausalLMOutputWithPast(loss=loss, aux_loss=aux_loss, logits=logits, past_key_values=past_key_values)
+        return MoeCausalLMOutputWithPast(
+            loss=loss,  # type: ignore[arg-type]
+            aux_loss=aux_loss,
+            logits=logits,
+            past_key_values=past_key_values,  # type: ignore[arg-type]
+        )

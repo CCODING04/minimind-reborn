@@ -7,6 +7,7 @@ import json
 import math
 import operator
 import re
+from collections.abc import Callable
 
 # ===== 工具 schema =====
 TOOLS = [
@@ -138,7 +139,7 @@ UNIT_DATA = {
     "fahrenheit_celsius": 0.5556,
 }
 
-MOCK_RESULTS = {
+MOCK_RESULTS: dict[str, Callable[[dict], dict]] = {
     "calculate_math": lambda a: {"result": str(safe_math_eval(a.get("expression", "0")))},
     "unit_converter": lambda a: {
         "result": round(
@@ -149,7 +150,7 @@ MOCK_RESULTS = {
     },
     "get_current_weather": lambda a: (
         lambda w: {"city": a.get("location"), "temperature": w[0], "humidity": "65%", "condition": w[1]}
-    )(WEATHER_DATA.get(a.get("location"), ("22°C", "晴"))),
+    )(WEATHER_DATA.get(a.get("location") or "", ("22°C", "晴"))),
     "get_current_time": lambda a: {
         "datetime": TIME_DATA.get(a.get("timezone", "Asia/Shanghai"), "2025-03-07 14:30:00"),
         "timezone": a.get("timezone", "Asia/Shanghai"),
@@ -157,10 +158,12 @@ MOCK_RESULTS = {
     "get_exchange_rate": lambda a: {
         "from": a.get("from_currency"),
         "to": a.get("to_currency"),
-        "rate": EXCHANGE_DATA.get((a.get("from_currency"), a.get("to_currency")), 1.0),
+        "rate": EXCHANGE_DATA.get((a.get("from_currency") or "", a.get("to_currency") or ""), 1.0),
     },
     "translate_text": lambda a: {
-        "translated_text": TRANSLATE_DATA.get((a.get("text"), a.get("target_language")), a.get("text", ""))
+        "translated_text": TRANSLATE_DATA.get(
+            (a.get("text") or "", a.get("target_language") or ""), {"translated_text": a.get("text", "")}
+        )
     },
 }
 
@@ -235,7 +238,7 @@ def safe_math_eval(expression: str) -> float:
             ).split()
         },
     }
-    bin_ops = {
+    bin_ops: dict[type, Callable[[float, float], float]] = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
         ast.Mult: operator.mul,
@@ -244,7 +247,7 @@ def safe_math_eval(expression: str) -> float:
         ast.Mod: operator.mod,
         ast.Pow: pow_guard,
     }
-    unary_ops = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+    unary_ops: dict[type, Callable[[float], float]] = {ast.UAdd: operator.pos, ast.USub: operator.neg}
     chars = str.maketrans({"^": "**", "×": "*", "÷": "/", "−": "-", "²": "**2", "³": "**3", "（": "(", "）": ")"})
     expr = str(expression).translate(chars).strip()
     if not expr or len(expr) > 512:

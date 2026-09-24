@@ -18,7 +18,8 @@ from minimind_reborn.configuration.schemas import RunConfig
 from minimind_reborn.data.datasets import RLAIFDataset
 from minimind_reborn.data.registry import file_path, resolve_dataset
 from minimind_reborn.loggers import get_logger
-from minimind_reborn.models.weights import load_inference_weights, resolve_weight_path
+from minimind_reborn.models.config import MiniMindConfig
+from minimind_reborn.models.weights import load_inference_weights, resolve_weight_path, to_device
 from minimind_reborn.training.common.optim import configure_optimizers
 from minimind_reborn.training.common.reward_model import LMForRewardModel
 from minimind_reborn.training.common.rewards import batch_rewards
@@ -42,17 +43,19 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     init = resolve_weight_path(t.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe)
     actor = build_model(cfg, tokenizer)
     load_inference_weights(actor, init, strict=True)
-    actor = actor.to(device)  # RL 循环不经 Trainer，设备搬运自己负责
+    actor = to_device(actor, device)  # RL 循环不经 Trainer，设备搬运自己负责
     ref_model = build_model(cfg, tokenizer)
     load_inference_weights(ref_model, init, strict=True)
     ref_model.eval().requires_grad_(False).to(device)
-    critic = CriticModel(actor.config)
+    from typing import cast
+
+    critic = CriticModel(cast(MiniMindConfig, actor.config))
     load_inference_weights(critic, init, strict=False)  # value_head 随机初始化，其余对齐 actor
-    critic = critic.to(device)
+    critic = to_device(critic, device)
     reward_model = LMForRewardModel(rl.reward_model_path, device=device) if rl.reward_model_path else None
 
     dataset = RLAIFDataset(file_path(resolve_dataset(cfg.data.dataset)), tokenizer, thinking_ratio=rl.thinking_ratio)
-    sampler = DistributedSampler(dataset, shuffle=True) if dist.is_initialized() else None
+    sampler: DistributedSampler | None = DistributedSampler(dataset, shuffle=True) if dist.is_initialized() else None
     actor_optimizer = configure_optimizers(actor, t.learning_rate, t.weight_decay)
     critic_optimizer = configure_optimizers(critic, rl.critic_learning_rate, t.weight_decay)
     iters = math.ceil(len(dataset) / t.batch_size / dist.get_world_size())
@@ -70,8 +73,12 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     )
 
     if dist.is_initialized():
-        actor = torch.nn.parallel.DistributedDataParallel(actor, device_ids=[local_rank], broadcast_buffers=False)
-        critic = torch.nn.parallel.DistributedDataParallel(critic, device_ids=[local_rank], broadcast_buffers=False)
+        actor = torch.nn.parallel.DistributedDataParallel(  # type: ignore[assignment]
+            actor, device_ids=[local_rank], broadcast_buffers=False
+        )
+        critic = torch.nn.parallel.DistributedDataParallel(  # type: ignore[assignment]
+            critic, device_ids=[local_rank], broadcast_buffers=False
+        )
     rollout_engine = create_rollout_engine(cfg, actor, tokenizer, device)
     set_seed(t.seed + dist.get_rank(), deterministic=t.deterministic)
 

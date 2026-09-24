@@ -11,6 +11,7 @@ import time
 from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Any
 
 import torch
 from torch.nn.parallel import DistributedDataParallel
@@ -25,6 +26,7 @@ from minimind_reborn.training.common.amp import autocast_context, build_scaler, 
 from minimind_reborn.training.common.checkpoint import checkpoint_path, load_checkpoint, save_checkpoint
 from minimind_reborn.training.common.lr import get_lr
 from minimind_reborn.training.common.optim import configure_optimizers
+from minimind_reborn.training.common.prefetch import CUDAPrefetcher
 from minimind_reborn.utils import dist
 from minimind_reborn.utils.io import atomic_write_json
 
@@ -41,7 +43,7 @@ class SkipBatchSampler(Sampler):
     因此 worker 也不会加载被跳过的样本。
     """
 
-    def __init__(self, sampler: Sampler | list[int], batch_size: int, skip_batches: int = 0):
+    def __init__(self, sampler: DistributedSampler | list[int], batch_size: int, skip_batches: int = 0):
         self.sampler = sampler
         self.batch_size = batch_size
         self.skip_batches = skip_batches
@@ -133,7 +135,7 @@ class Trainer:
             build_backends(cfg.metrics.backends, self.run_dir, project=cfg.metrics.project, run_name=cfg.recipe_name)
         )
 
-        self.raw_model = model.to(self.device)
+        self.raw_model: torch.nn.Module = model.to(self.device)
         self.scaler = build_scaler(self.dtype)
         self.optimizer = configure_optimizers(
             self.raw_model,
@@ -144,12 +146,16 @@ class Trainer:
         self.best_val_loss: float | None = None
         self.start_epoch, self.start_step = 0, 0
         self.optimizer_steps = 0
+        # MFU 估算基数（training §7：硬件效率入日志）。RTX 4090 bf16 dense 峰值 ~165 TFLOPS；
+        # 换卡型请同步修改。混合卡（4090+4090D）取慢卡口径保守估计。
+        self.n_params = sum(p.numel() for p in self.raw_model.parameters() if p.requires_grad)
+        self.peak_tflops_per_gpu = 165.0
 
         # ---- 初始化语义三选一（resume > finetune > init_from，互斥由使用场景保证） ----
         self._load_initial_weights()
         # ---- compile 与 DDP 包装（优化器建在裸模型上，之后包装） ----
         if t.compile:
-            self.raw_model = torch.compile(self.raw_model)
+            self.raw_model = torch.compile(self.raw_model)  # type: ignore[assignment]  # type: ignore[assignment]
             logger.info("torch.compile 已启用")
         if dist.is_initialized():
             # 非持久 buffer（RoPE 表）各 rank 由同一 config 确定性算出，广播纯属浪费
@@ -189,10 +195,16 @@ class Trainer:
             self.metrics.close()
             logger.info("训练结束：best_val_loss=%s optimizer_steps=%d", self.best_val_loss, self.optimizer_steps)
 
-    def _train_epoch(self, epoch: int) -> None:
+    def _train_epoch(self, epoch: int) -> tuple[int, bool]:
         cfg = self.cfg
         t = cfg.train
         loader, iters = self._build_loader(epoch)
+        # CUDA 侧流预取（training §8）：H2D 拷贝与计算重叠；CPU 设备自动旁路
+        data_iter: DataLoader[Any] | CUDAPrefetcher = loader
+        if self.device.startswith("cuda"):
+            from minimind_reborn.training.common.prefetch import CUDAPrefetcher
+
+            data_iter = CUDAPrefetcher(loader, self.device)
         start_step = self.start_step if epoch == self.start_epoch else 0
         if start_step > 0:
             logger.info("Epoch %d：跳过前 %d 个 micro step 续训", epoch + 1, start_step)
@@ -206,9 +218,9 @@ class Trainer:
         window_tokens = 0
         window_steps = 0
         running_loss = 0.0
-        last_grad_norm = 0.0
+        last_grad_norm: torch.Tensor | float = 0.0
 
-        for offset, batch in enumerate(loader, start=start_step):
+        for offset, batch in enumerate(data_iter, start=start_step):
             global_micro = epoch * full_iters + offset
             total_micro = (
                 min(cfg.train.epochs * full_iters, cfg.train.max_steps)
@@ -260,17 +272,20 @@ class Trainer:
                 window_tokens = 0
                 window_steps = 0
                 eta_min = estimate_eta_minutes(time.time() - epoch_start, offset + 1 - start_step, iters - offset - 1)
+                # MFU 估算（training §7）：训练 FLOPs ≈ 6·N·tokens/s，除以各卡峰值算力×卡数
+                mfu = 6.0 * self.n_params * tokens_per_s / (dist.get_world_size() * self.peak_tflops_per_gpu * 1e12)
                 stats = {
                     **log_metrics,
                     "train/lr": lr,
                     "train/grad_norm": float(last_grad_norm),
                     "train/tokens_per_s": tokens_per_s,
+                    "train/mfu_est": round(mfu, 4),
                 }
                 # train/val 统一用 optimizer step（模型当前步长）；此前 train 用 micro step、
                 # val 用另一计数，两把尺子导致曲线 x 轴错位
                 self.metrics.log(stats, self.optimizer_steps)
                 logger.info(
-                    "Epoch[%d/%d](%d/%d) loss=%.4f lr=%.2e grad_norm=%.2f tok/s=%.0f eta=%.1fmin",
+                    "Epoch[%d/%d](%d/%d) loss=%.4f lr=%.2e grad_norm=%.2f tok/s=%.0f mfu=%.1f%% eta=%.1fmin",
                     epoch + 1,
                     t.epochs,
                     offset + 1,
@@ -279,6 +294,7 @@ class Trainer:
                     lr,
                     float(last_grad_norm),
                     tokens_per_s,
+                    mfu * 100,
                     eta_min,
                 )
 
@@ -367,10 +383,11 @@ class Trainer:
     # ============ 数据装载 ============
     def _build_loader(self, epoch: int) -> tuple[DataLoader, int]:
         cfg = self.cfg
+        sampler: DistributedSampler | None
         if dist.is_initialized():
             sampler = DistributedSampler(self.train_ds, shuffle=True)
             sampler.set_epoch(epoch)
-            inner: Sampler | list[int] = sampler
+            inner: DistributedSampler | list[int] = sampler
         else:
             g = torch.Generator()
             g.manual_seed(cfg.train.seed + epoch)  # 采样器显式携带种子（training §1）

@@ -16,7 +16,7 @@ from minimind_reborn.configuration.schemas import RunConfig
 from minimind_reborn.data.datasets import AgentRLDataset
 from minimind_reborn.data.registry import file_path, resolve_dataset
 from minimind_reborn.loggers import get_logger
-from minimind_reborn.models.weights import load_inference_weights, resolve_weight_path
+from minimind_reborn.models.weights import load_inference_weights, resolve_weight_path, to_device
 from minimind_reborn.training.agent.tools import CHECK_ARGS, TOOLS, execute_tool, parse_tool_calls
 from minimind_reborn.training.common.optim import configure_optimizers
 from minimind_reborn.training.common.rewards import rep_penalty
@@ -195,10 +195,10 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     tokenizer = load_tokenizer()
     t = cfg.train
 
-    model = build_model(cfg, tokenizer)
+    model: torch.nn.Module = build_model(cfg, tokenizer)
     init = resolve_weight_path(t.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe)
     load_inference_weights(model, init, strict=True)
-    model = model.to(device)  # RL 循环不经 Trainer，设备搬运自己负责
+    model = to_device(model, device)  # RL 循环不经 Trainer，设备搬运自己负责
     ref_model = build_model(cfg, tokenizer)
     load_inference_weights(ref_model, init, strict=True)
     ref_model.eval().requires_grad_(False).to(device)
@@ -212,7 +212,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
             "gt": [x["gt"] for x in b],
         }
 
-    sampler = DistributedSampler(dataset, shuffle=True) if dist.is_initialized() else None
+    sampler: DistributedSampler | None = DistributedSampler(dataset, shuffle=True) if dist.is_initialized() else None
     optimizer = configure_optimizers(model, t.learning_rate, t.weight_decay)
     iters = math.ceil(len(dataset) / t.batch_size / dist.get_world_size())
     total_steps = math.ceil(iters / t.gradient_accumulation_steps) * t.epochs
@@ -220,7 +220,9 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     start_epoch, start_step = session.try_resume(model, optimizer, scheduler)
 
     if dist.is_initialized():
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], broadcast_buffers=False)
+        model = torch.nn.parallel.DistributedDataParallel(  # type: ignore[assignment]
+            model, device_ids=[local_rank], broadcast_buffers=False
+        )
     rollout_engine = create_rollout_engine(cfg, model, tokenizer, device)
     set_seed(t.seed + dist.get_rank(), deterministic=t.deterministic)
 

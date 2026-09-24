@@ -41,6 +41,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    from minimind_reborn.utils.runtime import configure_runtime
+
+    configure_runtime()  # 线程数/文件句柄上限：训练入口一次设置（training §8）
     local_rank = dist.init_distributed()
     cfg = load_config(args.recipe, args.overrides)
     cfg.run_dir = dist.broadcast_object(cfg.run_dir)  # 时间戳在各 rank 各自取会得到不同目录，以 rank0 为准

@@ -7,15 +7,15 @@ torch 原生引擎用于单卡/小模型，sglang HTTP 引擎用于加速大规�
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 import torch
 from torch import Tensor
-from torch.nn.parallel import DistributedDataParallel
 
 from minimind_reborn.configuration.schemas import GenerateConfig, RunConfig
 from minimind_reborn.inference.generator import generate
 from minimind_reborn.loggers import get_logger
+from minimind_reborn.models.model import MiniMindForCausalLM
 from minimind_reborn.models.weights import unwrap_model
 
 logger = get_logger("rollout")
@@ -76,7 +76,7 @@ class TorchRolloutEngine:
         max_new_tokens: int,
         temperature: float = 0.8,
     ) -> RolloutResult:
-        model = unwrap_model(self.policy_model)
+        model = cast(MiniMindForCausalLM, unwrap_model(self.policy_model))
         gen = GenerateConfig(temperature=temperature, top_p=0.95, top_k=50)
         # repeat_interleave 到 (b·num_gen, P)；generate 内部预分配 KV cache
         result = generate(
@@ -181,7 +181,7 @@ class SGLangRolloutEngine:
             output_ids=pad(outs, max_o, pad_id),
             completion_ids=pad(comps_ids, max_c, pad_id),
             per_token_logps=pad(logps, max_c, 0.0).float(),
-            completions=comps,
+            completions=cast("list[str]", comps),
             prompt_lens=torch.tensor([len(x) for x in all_input_ids], device=device),
             completion_mask=torch.tensor([[1] * len(x) + [0] * (max_c - len(x)) for x in comps_ids], device=device),
         )
@@ -192,12 +192,12 @@ class SGLangRolloutEngine:
 
         ok = True
         if (
-            not DistributedDataParallel.is_available()
+            not torch.distributed.is_available()
             or not torch.distributed.is_initialized()
             or torch.distributed.get_rank() == 0
         ):
             try:
-                unwrapped = unwrap_model(model)
+                unwrapped = cast(MiniMindForCausalLM, unwrap_model(model))
                 path = os.path.abspath(self.shared_ckpt_path)
                 state = {k: v.detach().half().cpu() for k, v in unwrapped.state_dict().items()}
                 unwrapped.save_pretrained(path, state_dict=state, safe_serialization=False)

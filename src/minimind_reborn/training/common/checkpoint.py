@@ -46,7 +46,7 @@ def save_checkpoint(
     *,
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
-    scaler: torch.amp.GradScaler,
+    scaler: torch.amp.GradScaler | None,
     epoch: int,
     step: int,
     config_snapshot: dict,

@@ -28,6 +28,7 @@ dev = [
     "pytest>=8.3",
     "pytest-timeout>=2.3",
     "ruff==0.14.0",
+    "mypy>=1.13",
 ]
 
 [tool.uv]
@@ -55,6 +56,14 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # __init__.py 只做再导出：未使用的 import 是再导出语义
 "src/minimind_reborn/**/__init__.py" = ["F401"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src/minimind_reborn"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_redundant_casts = true
+# 循序渐进：默认档位（非 strict）；新增模块建议从写第一天就过 mypy
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

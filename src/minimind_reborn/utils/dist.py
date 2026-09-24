@@ -56,12 +56,6 @@ def barrier() -> None:
         dist.barrier()
 
 
-def wait_for_master() -> None:
-    """非主 rank 等主 rank 建好共享资源（数据集缓存/tokenizer 下载）再继续。"""
-    if dist.is_available() and dist.is_initialized() and dist.get_rank() != 0:
-        dist.barrier()
-
-
 def cleanup() -> None:
     if dist.is_available() and dist.is_initialized():
         dist.barrier()
@@ -75,6 +69,11 @@ def all_reduce_mean(value: float, device: str = "cpu") -> float:
     t = torch.tensor([value], device=device)
     dist.all_reduce(t, op=dist.ReduceOp.AVG)
     return float(t.item())
+
+
+# 透传原生分布式原语：业务代码经本模块访问，避免散落 import torch.distributed
+all_reduce = dist.all_reduce
+ReduceOp = dist.ReduceOp
 
 
 def broadcast_object(obj, src: int = 0):

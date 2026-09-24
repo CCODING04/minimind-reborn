@@ -12,6 +12,7 @@ style:  ## 自动修复：format + lint --fix
 quality:  ## 只查不改（CI 同源）
 	$(UV) run ruff@$(RUFF_VERSION) format --check .
 	$(UV) run ruff@$(RUFF_VERSION) check .
+	$(UV) run mypy
 
 test:  ## 测试：强制离线（metrics 全部替换 null，禁云端上报）
 	MINIMIND_REBORN_METRICS_DISABLED=1 $(PYTHON) -m pytest tests/ -m "not slow" $(PYTEST_ARGS)

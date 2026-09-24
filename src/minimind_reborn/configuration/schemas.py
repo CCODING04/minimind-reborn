@@ -164,9 +164,9 @@ class RunConfig:
 
     stage: str = "pretrain"
     recipe_name: str = "default"  # 实验名 = 配方文件名（指标曲线 ↔ 输出目录对齐）
-    output_dir: str | None = None  # 派生：out_root()/stage
-    checkpoint_dir: str | None = None  # 派生：checkpoint_root()/stage
-    run_dir: str | None = None  # 派生：run_root()/recipe_name/时间戳
+    output_dir: str = ""  # 派生：out_root()；"" 为装载前哨兵（守门人必填）
+    checkpoint_dir: str = ""  # 派生：checkpoint_root()
+    run_dir: str = ""  # 派生：run_root()/recipe_name/时间戳
     model: ModelConfig = field(default_factory=ModelConfig)
     data: DataConfig = field(default_factory=DataConfig)
     train: TrainConfig = field(default_factory=TrainConfig)

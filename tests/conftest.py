@@ -80,8 +80,3 @@ def tiny_jsonl(tmp_path):
     p2 = tmp_path / "sft_smoke.jsonl"
     p2.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in convs), encoding="utf-8")
     return p, p2
-
-
-requires_gpu = pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="需要 CUDA 设备（testing-quality §2 门槛装饰器）"
-)

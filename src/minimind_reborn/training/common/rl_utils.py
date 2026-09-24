@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 import torch
 
@@ -69,7 +70,7 @@ class RLSession:
         cfg = self.cfg
         return f"{self.save_weight}_{cfg.model.hidden_size}{'_moe' if cfg.model.use_moe else ''}.pth"
 
-    def try_resume(self, model, optimizer, scheduler, extra: dict[str, object] | None = None) -> tuple[int, int]:
+    def try_resume(self, model, optimizer, scheduler, extra: dict[str, Any] | None = None) -> tuple[int, int]:
         """续训默认行为；extra: {checkpoint key → 带 load_state_dict 的对象}。返回 (start_epoch, start_step)。"""
         cfg = self.cfg
         ckpt = checkpoint_path(self.ckpt_dir, self.save_weight, cfg.model.hidden_size, cfg.model.use_moe)

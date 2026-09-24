@@ -18,7 +18,7 @@ from minimind_reborn.loggers import get_logger
 logger = get_logger("env")
 
 
-def _git_info(repo_dir: Path) -> dict[str, str]:
+def _git_info(repo_dir: Path) -> dict[str, Any]:
     try:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=repo_dir, capture_output=True, text=True, timeout=10, check=True

@@ -17,7 +17,7 @@ from minimind_reborn.configuration.schemas import RunConfig
 from minimind_reborn.data.datasets import RLAIFDataset
 from minimind_reborn.data.registry import file_path, resolve_dataset
 from minimind_reborn.loggers import get_logger
-from minimind_reborn.models.weights import load_inference_weights, resolve_weight_path
+from minimind_reborn.models.weights import load_inference_weights, resolve_weight_path, to_device
 from minimind_reborn.training.common.optim import configure_optimizers
 from minimind_reborn.training.common.reward_model import LMForRewardModel
 from minimind_reborn.training.common.rewards import batch_rewards
@@ -34,13 +34,13 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     session = RLSession(cfg, save_weight="grpo", device=device, local_rank=local_rank)
     device = session.device
     tokenizer = load_tokenizer()
-    model = build_model(cfg, tokenizer)
+    model: torch.nn.Module = build_model(cfg, tokenizer)
     rl = cfg.rl
     t = cfg.train
 
     init = resolve_weight_path(t.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe)
     load_inference_weights(model, init, strict=True)
-    model = model.to(device)  # RL 循环不经 Trainer，设备搬运自己负责
+    model = to_device(model, device)  # RL 循环不经 Trainer，设备搬运自己负责
 
     ref_model = build_model(cfg, tokenizer)
     load_inference_weights(ref_model, init, strict=True)
@@ -54,7 +54,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
         thinking_ratio=rl.thinking_ratio,
     )
     if dist.is_initialized():
-        sampler = DistributedSampler(dataset, shuffle=True)
+        sampler: DistributedSampler | None = DistributedSampler(dataset, shuffle=True)
     else:
         sampler = None
     optimizer = configure_optimizers(model, t.learning_rate, t.weight_decay)

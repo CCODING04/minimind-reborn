@@ -50,13 +50,6 @@ def worker_init() -> dict:
     return {"worker_init_fn": seed_worker}
 
 
-def make_generator(seed: int) -> torch.Generator:
-    """给 DataLoader shuffle 用的显式生成器（采样器显式携带种子）。"""
-    g = torch.Generator()
-    g.manual_seed(seed)
-    return g
-
-
 def loader_kwargs(num_workers: int) -> dict:
     """DataLoader 通用 kwargs（pin_memory + worker 种子），集中一处。"""
     kwargs: dict = {"num_workers": num_workers, "pin_memory": True}

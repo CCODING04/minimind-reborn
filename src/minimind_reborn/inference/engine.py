@@ -83,16 +83,21 @@ class MiniMindLLM:
             )
 
         target_dtype = _resolve_dtype(dtype, device)
-        model = MiniMindForCausalLM(cfg).to(target_dtype)
-        load_inference_weights(model, weight_path, strict=True)
-        model = model.to(device)
+        from minimind_reborn.models.weights import to_dtype
 
-        # 跨源一致性前置断言：词表大小必须与 tokenizer 一致
+        model = to_dtype(MiniMindForCausalLM(cfg), target_dtype)
+        load_inference_weights(model, weight_path, strict=True)
+        from minimind_reborn.models.weights import to_device
+
+        model = to_device(model, device)
+
+        # 跨源一致性前置校验（业务校验用 raise，不用 assert——python -O 下 assert 会消失）
         tokenizer = _load_tokenizer()
-        assert cfg.vocab_size == len(tokenizer), (
-            f"模型词表({cfg.vocab_size}) 与 tokenizer 词表({len(tokenizer)}) 不一致——"
-            f"权重与 tokenizer 来自不同训练产物，禁止混用"
-        )
+        if cfg.vocab_size != len(tokenizer):
+            raise ValueError(
+                f"模型词表({cfg.vocab_size}) 与 tokenizer 词表({len(tokenizer)}) 不一致——"
+                f"权重与 tokenizer 来自不同训练产物，禁止混用"
+            )
         logger.info(
             "引擎就绪：%s | %s | %.2fM 参数",
             weight_path.name,

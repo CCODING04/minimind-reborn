@@ -112,6 +112,7 @@ def _apply_override(cfg: RunConfig, override: str) -> None:
     if field_name not in field_types:
         raise ValueError(f"未知配置项 '{domain}.{field_name}'。合法项：{sorted(field_types)}")
     current = getattr(target, field_name)
+    value: Any
     low = raw.strip().lower()
     if low in ("true", "false"):
         value = low == "true"  # CLI 习惯：小写布尔字面量

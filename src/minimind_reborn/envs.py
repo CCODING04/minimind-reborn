@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
-_CACHE: dict[str, object] = {}
+_CACHE: dict[str, Any] = {}
 
 
 def _get_str(key: str, default: str) -> str:
@@ -58,6 +59,11 @@ def metrics_disabled() -> bool:
 def log_all_ranks() -> bool:
     """调试分布式时放开非 rank0 的控制台日志（默认只 rank0，防多卡交错刷屏）。"""
     return _get_int("MINIMIND_REBORN_LOG_ALL_RANKS", 0) == 1
+
+
+def torch_threads() -> int:
+    """主进程 torch intraop 线程数（worker 扫描实测：4 worker 即饱和，8 线程富余，见 docs/pretrain_readiness.md §2）。"""
+    return _get_int("MINIMIND_REBORN_TORCH_THREADS", 8)
 
 
 def seed_offset() -> int:

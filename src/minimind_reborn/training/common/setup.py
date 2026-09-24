@@ -21,10 +21,14 @@ def load_tokenizer():
 
 
 def assert_vocab_match(vocab_size: int, tokenizer) -> None:
-    """跨源一致性前置断言（llm-inference §1）：词表来自两份产物，必须当场对上。"""
-    assert vocab_size == len(tokenizer), (
-        f"模型 vocab_size({vocab_size}) != tokenizer 词表({len(tokenizer)})——权重与 tokenizer 混用自不同训练产物"
-    )
+    """跨源一致性前置校验（llm-inference §1）：词表来自两份产物，必须当场对上。
+
+    业务校验用 raise 而非 assert（python -O 会剥掉 assert，防线会静默消失）。
+    """
+    if vocab_size != len(tokenizer):
+        raise ValueError(
+            f"模型 vocab_size({vocab_size}) != tokenizer 词表({len(tokenizer)})——权重与 tokenizer 混用自不同训练产物，禁止训练/推理"
+        )
 
 
 def build_model(cfg: RunConfig, tokenizer) -> MiniMindForCausalLM:
@@ -35,6 +39,7 @@ def build_model(cfg: RunConfig, tokenizer) -> MiniMindForCausalLM:
 def build_lm_dataset(cfg: RunConfig, tokenizer, kind: str):
     """按注册表 kind 构建数据集并返回 (train_view, eval_view)。"""
     path = file_path(resolve_dataset(cfg.data.dataset))
+    ds: PretrainDataset | SFTDataset
     if kind == "pretrain":
         ds = PretrainDataset(path, tokenizer, max_length=cfg.data.max_seq_len, eval_ratio=cfg.data.eval_ratio)
     elif kind == "sft":

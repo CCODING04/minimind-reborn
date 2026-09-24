@@ -81,6 +81,10 @@ class JsonlIndexedDataset(Dataset):
     def __len__(self) -> int:
         return len(self._offsets)
 
+    def encode(self, index: int):
+        """行级编码（SegmentView 统一入口），子类必须实现。"""
+        raise NotImplementedError
+
     def load_line(self, index: int) -> dict:
         with self.path.open("rb") as f:
             f.seek(self._offsets[index])

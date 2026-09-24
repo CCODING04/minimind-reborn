@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import TypeVar
 
 import torch
 
@@ -20,11 +21,27 @@ from minimind_reborn.utils.io import atomic_save
 logger = logging.getLogger("minimind.weights")
 
 
+_M = TypeVar("_M", bound=torch.nn.Module)
+
+
+def to_device(model: _M, target: str) -> _M:
+    """nn.Module 口径的设备搬运：规避 transformers 5.x PreTrainedModel.to 的 stub 回归。"""
+    return model.to(target)
+
+
+def to_dtype(model: _M, dtype: torch.dtype) -> _M:
+    """nn.Module 口径的精度搬运（同上）。"""
+    return model.to(dtype=dtype)
+
+
 def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
     """剥掉 DDP / torch.compile 壳，返回裸模型（保存与推理路径统一入口）。"""
-    raw = model.module if hasattr(model, "module") else model
-    raw = getattr(raw, "_orig_mod", raw)
-    return raw
+    from torch.nn.parallel import DistributedDataParallel
+
+    raw: torch.nn.Module = model
+    if isinstance(raw, DistributedDataParallel):
+        raw = raw.module
+    return getattr(raw, "_orig_mod", raw)
 
 
 def save_inference_weights(model: torch.nn.Module, path: str | Path, dtype: torch.dtype = torch.float16) -> Path:
