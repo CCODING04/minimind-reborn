@@ -70,3 +70,37 @@ def test_prefill_then_decode_matches_full_forward(tiny_model):
         model(x[:, :4], past_key_values=cache)
         step = model(x[:, 4:5], past_key_values=cache).logits
     assert torch.allclose(full[:, 4], step[:, 0], atol=1e-5)
+
+
+def test_sdpa_prefill_path_matches_manual(tiny_cfg):
+    """路径 2（SDPA 融合 prefill/decode）与路径 3（manual 保留实现）在 fp32 下等价。
+
+    预分配 KV cache + SDPA 显式 mask 优化（2026-09-24）的回归锁定：带 cache 的
+    prefill 与步进解码都必须与 manual 路径 allclose，且 cache 写入语义不变。
+    """
+    torch.manual_seed(5)
+    from minimind_reborn.models.model import MiniMindForCausalLM
+
+    a = MiniMindForCausalLM(tiny_cfg).eval()  # 默认：带 cache 走 SDPA 融合路径
+    b = MiniMindForCausalLM(tiny_cfg).eval()
+    b.load_state_dict(a.state_dict())
+    for layer in b.model.layers:  # 强制 manual 路径
+        layer.self_attn.flash = False
+    x = torch.randint(0, 64, (2, 7))
+
+    with torch.no_grad():
+        cache_a = KVCache(2, 2, 24, 1, 16, torch.float32, "cpu")
+        cache_b = KVCache(2, 2, 24, 1, 16, torch.float32, "cpu")
+        prefill_a = a(x[:, :5], past_key_values=cache_a).logits
+        prefill_b = b(x[:, :5], past_key_values=cache_b).logits
+        assert torch.allclose(prefill_a, prefill_b, atol=1e-5), "SDPA prefill 与 manual prefill 不一致"
+        step_a = a(x[:, 5:6], past_key_values=cache_a).logits
+        step_b = b(x[:, 5:6], past_key_values=cache_b).logits
+        assert torch.allclose(step_a, step_b, atol=1e-5), "SDPA 步进与 manual 步进不一致"
+
+    # padding mask 下的等价性（rollout 场景：batch 内长短不一）
+    mask = torch.tensor([[1, 1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 1, 1]])
+    with torch.no_grad():
+        pa = a(x, attention_mask=mask).logits
+        pb = b(x, attention_mask=mask).logits
+    assert torch.allclose(pa, pb, atol=1e-5), "padding mask 下 SDPA 与 manual 不一致"

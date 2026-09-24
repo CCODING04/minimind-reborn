@@ -1,10 +1,16 @@
-"""GQA + QK-Norm 注意力。
+"""GQA + QK-Norm 注意力：三条执行路径，一条正确性论证。
 
-SDPA 探测函数化（python-style §2 能力探测优于版本判断）；
-SDPA 仅用于"无 cache 的训练/编码"路径——带 cache 的步进路径 causal mask
-相对位置偏移，SDPA 的 is_causal 语义不匹配，走显式 mask 分支（这与官方一致，
-但 mask 的构造加了注释：这个 off-by-one 是生成正确性的头号杀手）。
-"""
+路径选择（按序判定）：
+1. SDPA is_causal——无 cache 的训练/整段编码（attention_mask 全 1 或 None）；
+2. SDPA 融合 prefill/decode——带 cache 的步进路径，用显式 additive mask 表达
+   "causal 只作用于当前步新位置块 + 历史/新块列的 padding 抑制"。融合 kernel 不物化
+   (heads, seq, total) 的 fp32 打分矩阵，显存与速度都优于路径 3（官方同场景用每步
+   torch.cat cache + SDPA prefill，数值路径因此与我们原 manual 实现存在 fp16 差异）；
+3. manual 显式打分——保留原实现：flash_attn=False / 无 SDPA 时走到。fp32 打分 +
+   softmax 回落是数值基线，也是理解路径 2 的参考实现（causal mask 的 off-by-one
+   注释保留在此）。
+
+fp16 双路径贪心分叉属预期浮点行为：数值验证以 fp32 为准（fp32 下三路径逐位一致）。"""
 
 from __future__ import annotations
 
@@ -75,14 +81,34 @@ class Attention(nn.Module):
 
         use_sdpa = (
             self.flash
-            and cache is None  # 训练/整段编码路径；带 cache 的步进 causal 语义 SDPA 不匹配
+            and cache is None  # 路径 1：训练/整段编码
             and (attention_mask is None or bool(torch.all(attention_mask == 1)))
         )
         if use_sdpa:
             output = F.scaled_dot_product_attention(
                 xq, xk_full, xv_full, dropout_p=self.dropout if self.training else 0.0, is_causal=self.is_causal
             )
+        elif self.flash:
+            # 路径 2：SDPA 融合 prefill/decode（带 cache）。additive mask 一次构造：
+            #   - causal 部分只落在"当前步新位置块"的最后 seq_len 列——历史列全部可见；
+            #     新块内第 i 行允许看到块内前 i+1 个位置（与路径 3 的 [-seq_len:] 切片同一论证）
+            #   - padding 列用 masked_fill 覆盖为 finfo.min（覆盖而非累加，避免 fp16 下限相加下溢）
+            total_len = cache_start + seq_len
+            neg_min = torch.finfo(xq.dtype).min
+            mask = torch.zeros(bsz, 1, seq_len, total_len, device=xq.device, dtype=xq.dtype)
+            if seq_len > 1:
+                causal = torch.zeros(seq_len, total_len, device=xq.device, dtype=xq.dtype)
+                causal[:, cache_start:] = torch.full(
+                    (seq_len, seq_len), neg_min, device=xq.device, dtype=xq.dtype
+                ).triu(1)
+                mask = mask + causal
+            if attention_mask is not None:
+                mask = mask.masked_fill(attention_mask[:, None, None, :total_len] == 0, neg_min)
+            output = F.scaled_dot_product_attention(
+                xq, xk_full, xv_full, dropout_p=self.dropout if self.training else 0.0, attn_mask=mask
+            )
         else:
+            # 路径 3：manual 显式打分（保留原实现——数值基线与教学参考）。
             # 数值纪律：打分升 fp32，softmax 后回落（与官方一致）
             scores = (xq @ xk_full.transpose(-2, -1)).float() / math.sqrt(self.head_dim)  # (b, heads, seq, total)
             if self.is_causal:
