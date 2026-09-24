@@ -8,7 +8,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-import requests
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -107,8 +106,11 @@ class SGLangRolloutEngine:
     """SGLang HTTP 引擎（可选加速）：权重经磁盘热更新同步。"""
 
     def __init__(self, base_url: str, model_path: str, shared_ckpt_path: str = "sglang_ckpt", timeout: int = 120):
+        import requests
+
         from transformers import AutoTokenizer
 
+        self._requests = requests
         self.base_url = base_url.rstrip("/")
         self.shared_ckpt_path = shared_ckpt_path
         self.model_path = model_path
@@ -130,7 +132,7 @@ class SGLangRolloutEngine:
             },
             "return_logprob": True,
         }
-        resp = requests.post(f"{self.base_url}/generate", json=payload, timeout=self.timeout)
+        resp = self._requests.post(f"{self.base_url}/generate", json=payload, timeout=self.timeout)
         resp.raise_for_status()
         results = resp.json()
         if not isinstance(results, list):
@@ -176,7 +178,7 @@ class SGLangRolloutEngine:
                 state = {k: v.detach().half().cpu() for k, v in unwrapped.state_dict().items()}
                 unwrapped.save_pretrained(path, state_dict=state, safe_serialization=False)
                 self.tokenizer.save_pretrained(path)
-                resp = requests.post(f"{self.base_url}/update_weights_from_disk",
+                resp = self._requests.post(f"{self.base_url}/update_weights_from_disk",
                                      json={"model_path": path}, timeout=self.timeout)
                 ok = resp.status_code == 200
                 if not ok:
