@@ -50,15 +50,19 @@ def save_checkpoint(
     step: int,
     config_snapshot: dict,
     best_val_loss: float | None,
+    extra_states: dict[str, Any] | None = None,
 ) -> Path:
-    """写入六件套 + RNG（调用方先剥壳：unwrap_model(model)）。"""
+    """写入六件套 + RNG（调用方先剥壳：unwrap_model(model)）。
+
+    extra_states：范式自有状态（如 RL 的 scheduler/critic），随包落盘、随包恢复。
+    """
     from minimind_reborn.models.weights import unwrap_model
 
     raw = unwrap_model(model)
     payload = {
         "model": raw.state_dict(),
         "optimizer": optimizer.state_dict(),
-        "scaler": scaler.state_dict(),
+        "scaler": scaler.state_dict() if scaler is not None else None,
         "epoch": epoch,
         "step": step,
         "world_size": get_world_size(),
@@ -66,6 +70,8 @@ def save_checkpoint(
         "best_val_loss": best_val_loss,
         "rng": _rng_state(),
     }
+    for key, value in (extra_states or {}).items():
+        payload[key] = value.state_dict() if hasattr(value, "state_dict") else value
     return atomic_save(payload, path)
 
 
