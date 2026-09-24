@@ -2,6 +2,7 @@
 
 顺序固定（注释即契约）：temperature → repetition_penalty → top_k → top_p → 采样。
 """
+
 from __future__ import annotations
 
 import torch

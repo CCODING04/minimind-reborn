@@ -7,6 +7,7 @@ generate（采样）/ 各训练范式的专属参数（dpo/distill/lora/rl）。
 铁律 1：全部超参集中在此、带默认值、带一句话注释；
 铁律 6：必须由运行时注入/派生的参数用 None/-1 哨兵表达，守门人统一推导。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

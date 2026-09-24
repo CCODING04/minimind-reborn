@@ -7,6 +7,7 @@
 - 运行时随机增强（system 插入/空 think 移除）依赖 DataLoader worker 种子
   （utils/seed.seed_worker），这是原版的可复现性缺陷修复点。
 """
+
 from __future__ import annotations
 
 import json
@@ -44,7 +45,9 @@ def pre_processing_chat(conversations: list[dict], add_system_ratio: float = 0.2
     return conversations
 
 
-def post_processing_chat(prompt_content: str, empty_think_ratio: float = 0.2, remove_empty_think: bool | None = None) -> str:
+def post_processing_chat(
+    prompt_content: str, empty_think_ratio: float = 0.2, remove_empty_think: bool | None = None
+) -> str:
     """按概率移除空思考标签（保留 20% 样例带空 think 格式，让模型两种都会）。
 
     remove_empty_think 显式给值时跳过随机——DPO 用它保证 chosen/rejected 配对公平。
@@ -102,7 +105,7 @@ def _tail_split(n: int, eval_ratio: float) -> tuple[int, int]:
 class SegmentView(Dataset):
     """数据集的连续段视图（train 段 / eval 段）：复用底层字节索引，不复制数据。"""
 
-    def __init__(self, base: "JsonlIndexedDataset", start: int, stop: int):
+    def __init__(self, base: JsonlIndexedDataset, start: int, stop: int):
         self._base = base
         self._start = start
         self._stop = stop
@@ -132,7 +135,9 @@ class PretrainDataset(JsonlIndexedDataset):
     def encode(self, index: int) -> dict[str, torch.Tensor]:
         sample = self.load_line(index)
         text = str(sample["text"])
-        tokens = self.tokenizer(text, add_special_tokens=False, max_length=self.max_length - 2, truncation=True).input_ids
+        tokens = self.tokenizer(
+            text, add_special_tokens=False, max_length=self.max_length - 2, truncation=True
+        ).input_ids
         tokens = [self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id]
         input_ids = tokens + [self.tokenizer.pad_token_id] * (self.max_length - len(tokens))
         input_ids = torch.tensor(input_ids, dtype=torch.long)
@@ -195,7 +200,10 @@ class SFTDataset(JsonlIndexedDataset):
         sample = self.load_line(index)
         conversations = pre_processing_chat(sample["conversations"], self.add_system_ratio)
         input_ids, labels = self._encode_prompt(self.render(conversations))
-        return {"input_ids": torch.tensor(input_ids, dtype=torch.long), "labels": torch.tensor(labels, dtype=torch.long)}
+        return {
+            "input_ids": torch.tensor(input_ids, dtype=torch.long),
+            "labels": torch.tensor(labels, dtype=torch.long),
+        }
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         return self.encode(index)

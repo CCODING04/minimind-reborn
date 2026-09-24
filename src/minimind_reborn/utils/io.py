@@ -1,4 +1,5 @@
 """磁盘 IO 原子性（training §4：写盘用临时文件 + rename，防中断留坏文件）。"""
+
 from __future__ import annotations
 
 import json

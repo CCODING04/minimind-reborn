@@ -2,6 +2,7 @@
 
 未注册名报错时指明本 json 路径；kind 决定 Dataset 类的派发。
 """
+
 from __future__ import annotations
 
 import json

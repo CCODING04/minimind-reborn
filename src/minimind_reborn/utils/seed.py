@@ -6,6 +6,7 @@
   （原版 num_workers=8 + SFT 运行时随机增强正踩此坑）；
 - 分布式按 rank 偏移：数据顺序/dropout 各 rank 错开，模型初始化保持一致。
 """
+
 from __future__ import annotations
 
 import logging

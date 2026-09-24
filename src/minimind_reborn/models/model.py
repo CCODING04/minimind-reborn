@@ -2,6 +2,7 @@
 
 类名与参数名与官方完全一致（state_dict 键级兼容，官方发布权重可直接载入）。
 """
+
 from __future__ import annotations
 
 import torch
@@ -12,7 +13,7 @@ from transformers.modeling_outputs import MoeCausalLMOutputWithPast
 
 from minimind_reborn.models.attention import Attention
 from minimind_reborn.models.config import MiniMindConfig
-from minimind_reborn.models.feedforward import MOEFeedForward, FeedForward
+from minimind_reborn.models.feedforward import FeedForward, MOEFeedForward
 from minimind_reborn.models.kv_cache import KVCache
 from minimind_reborn.models.layers import RMSNorm, precompute_freqs_cis
 
@@ -37,8 +38,12 @@ class MiniMindBlock(nn.Module):
         attention_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         hidden_states = hidden_states + self.self_attn(
-            self.input_layernorm(hidden_states), position_embeddings,
-            cache=cache, layer_idx=self.layer_id, cache_start=cache_start, attention_mask=attention_mask,
+            self.input_layernorm(hidden_states),
+            position_embeddings,
+            cache=cache,
+            layer_idx=self.layer_id,
+            cache_start=cache_start,
+            attention_mask=attention_mask,
         )
         hidden_states = hidden_states + self.mlp(self.post_attention_layernorm(hidden_states))
         return hidden_states
@@ -82,7 +87,7 @@ class MiniMindModel(nn.Module):
 
     def forward(
         self,
-        input_ids: torch.Tensor,                    # (b, seq)
+        input_ids: torch.Tensor,  # (b, seq)
         attention_mask: torch.Tensor | None = None,  # (b, seq) 1=有效
         past_key_values: KVCache | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -99,7 +104,11 @@ class MiniMindModel(nn.Module):
         hidden_states = self.dropout(self.embed_tokens(input_ids))
         for layer in self.layers:
             hidden_states = layer(
-                hidden_states, (cos, sin), cache=past_key_values, cache_start=cache_start, attention_mask=attention_mask
+                hidden_states,
+                (cos, sin),
+                cache=past_key_values,
+                cache_start=cache_start,
+                attention_mask=attention_mask,
             )
         if past_key_values is not None:
             past_key_values.advance(seq_length)
@@ -141,7 +150,9 @@ class MiniMindForCausalLM(PreTrainedModel):
         **kwargs,
     ) -> MoeCausalLMOutputWithPast:
         hidden_states, aux_loss = self.model(input_ids, attention_mask, past_key_values)
-        slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) and logits_to_keep > 0 else slice(None)
+        slice_indices = (
+            slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) and logits_to_keep > 0 else slice(None)
+        )
         logits = self.lm_head(hidden_states[:, slice_indices, :])
         loss = None
         if labels is not None:
@@ -151,6 +162,4 @@ class MiniMindForCausalLM(PreTrainedModel):
             loss = F.cross_entropy(
                 shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1), ignore_index=-100
             )
-        return MoeCausalLMOutputWithPast(
-            loss=loss, aux_loss=aux_loss, logits=logits, past_key_values=past_key_values
-        )
+        return MoeCausalLMOutputWithPast(loss=loss, aux_loss=aux_loss, logits=logits, past_key_values=past_key_values)

@@ -1,7 +1,7 @@
 """PPO Critic：价值头 + 基座（官方 CriticModel 保留，value_head 新增参数）。"""
+
 from __future__ import annotations
 
-import torch
 from torch import nn
 
 from minimind_reborn.models.config import MiniMindConfig

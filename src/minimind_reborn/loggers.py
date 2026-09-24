@@ -6,6 +6,7 @@
 
 日志与指标是两条通道：事件进日志，数值进 metrics/；训练代码不允许第三种出口。
 """
+
 from __future__ import annotations
 
 import functools

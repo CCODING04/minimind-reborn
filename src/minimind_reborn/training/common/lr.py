@@ -1,4 +1,5 @@
 """LR 纯函数（training §7）：手写 warmup + 余弦，不引入 scheduler 对象状态。"""
+
 from __future__ import annotations
 
 import math

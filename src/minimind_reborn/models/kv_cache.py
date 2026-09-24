@@ -6,6 +6,7 @@
 - 是普通 Python 属性而非 register_buffer——不进 state_dict、不被 save 带走；
 - dtype 在构造时对齐当前推理精度一次，之后不再搬运。
 """
+
 from __future__ import annotations
 
 import torch

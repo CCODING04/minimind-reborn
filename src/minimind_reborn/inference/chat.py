@@ -1,4 +1,5 @@
 """对话封装（llm-inference §1 内核与文本分层）：文本进、文本出，内核只认 token。"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -6,12 +7,21 @@ from typing import Any
 from minimind_reborn.configuration.schemas import GenerateConfig
 
 
-def render_chat(tokenizer, messages: list[dict[str, Any]], *, tools: list | None = None,
-                open_thinking: bool = False, add_generation_prompt: bool = True) -> str:
+def render_chat(
+    tokenizer,
+    messages: list[dict[str, Any]],
+    *,
+    tools: list | None = None,
+    open_thinking: bool = False,
+    add_generation_prompt: bool = True,
+) -> str:
     """消息列表 → chat template 文本。模板进 tokenizer_config.json（单一事实源）。"""
     return tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=add_generation_prompt,
-        tools=tools, open_thinking=open_thinking,
+        messages,
+        tokenize=False,
+        add_generation_prompt=add_generation_prompt,
+        tools=tools,
+        open_thinking=open_thinking,
     )
 
 

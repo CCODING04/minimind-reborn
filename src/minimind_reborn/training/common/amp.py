@@ -6,6 +6,7 @@
 - 精度上下文在这里构造，训练循环里只使用不判断（CPU/禁用 AMP 走 nullcontext 分支）；
 - 设备不支持 bf16 时回退 fp16 并警告一次（降级必须留痕）。
 """
+
 from __future__ import annotations
 
 import logging

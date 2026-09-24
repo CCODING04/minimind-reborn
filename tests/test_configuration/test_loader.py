@@ -1,4 +1,5 @@
 """配置系统测试：未知 key / 类型断言 / 覆盖顺序 / 守门人派生 / 快照。"""
+
 from __future__ import annotations
 
 import pytest

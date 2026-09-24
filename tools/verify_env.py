@@ -1,4 +1,5 @@
 """环境验证脚本（env-dependencies §2：装完 torch 必跑）。"""
+
 from __future__ import annotations
 
 import argparse

@@ -1,4 +1,5 @@
 """SFT workflow：与 pretrain 的唯一差异是数据集（这就是抽基件的意义）。"""
+
 from __future__ import annotations
 
 from minimind_reborn.configuration.schemas import RunConfig
@@ -19,8 +20,15 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0) -> Tr
         return loss, {"train/loss": out.loss.item(), "train/aux_loss": float(out.aux_loss)}
 
     trainer = Trainer(
-        cfg, model, tokenizer, train_ds, eval_ds,
-        compute_loss=compute_loss, save_weight="full_sft", device=device, local_rank=local_rank,
+        cfg,
+        model,
+        tokenizer,
+        train_ds,
+        eval_ds,
+        compute_loss=compute_loss,
+        save_weight="full_sft",
+        device=device,
+        local_rank=local_rank,
     )
     trainer.run()
     return trainer

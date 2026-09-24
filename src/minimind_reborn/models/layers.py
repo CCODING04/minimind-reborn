@@ -3,6 +3,7 @@
 数值纪律（training §2）：norm、rotary 等半精度下易失稳的算子显式升 fp32
 计算、算完 `type_as` 回落——写法固定在此处，不依赖 autocast 内部行为。
 """
+
 from __future__ import annotations
 
 import math
@@ -66,9 +67,10 @@ def apply_rotary_pos_emb(
 
     q, k: (b, seq, heads, head_dim)；cos, sin: (seq, head_dim) → 在 head 维前 unsqueeze。
     """
+
     def rotate_half(x: torch.Tensor) -> torch.Tensor:
         # (b, seq, heads, head_dim) 前后半交换符号拼接
-        return torch.cat((-x[..., x.shape[-1] // 2:], x[..., : x.shape[-1] // 2]), dim=-1)
+        return torch.cat((-x[..., x.shape[-1] // 2 :], x[..., : x.shape[-1] // 2]), dim=-1)
 
     cos = cos.unsqueeze(unsqueeze_dim)
     sin = sin.unsqueeze(unsqueeze_dim)

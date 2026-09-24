@@ -3,6 +3,7 @@
 /v1/chat/completions：流式（reasoning_content 分流）与非流式；tool_calls 解析。
 可选依赖 fail-fast：fastapi/uvicorn 缺失时在启动期报错（python-style §2）。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,11 +27,16 @@ def parse_response(text: str) -> tuple[str, str | None, list[dict] | None]:
     for i, m in enumerate(re.findall(r"<tool_call>(.*?)</tool_call>", text, re.DOTALL)):
         try:
             call = json.loads(m.strip())
-            tool_calls.append({
-                "id": f"call_{int(time.time())}_{i}", "type": "function",
-                "function": {"name": call.get("name", ""),
-                             "arguments": json.dumps(call.get("arguments", {}), ensure_ascii=False)},
-            })
+            tool_calls.append(
+                {
+                    "id": f"call_{int(time.time())}_{i}",
+                    "type": "function",
+                    "function": {
+                        "name": call.get("name", ""),
+                        "arguments": json.dumps(call.get("arguments", {}), ensure_ascii=False),
+                    },
+                }
+            )
         except json.JSONDecodeError:
             pass
     if tool_calls:
@@ -41,10 +47,10 @@ def parse_response(text: str) -> tuple[str, str | None, list[dict] | None]:
 @catch_main
 def main() -> None:
     try:
-        from fastapi import FastAPI, HTTPException
+        import uvicorn
+        from fastapi import FastAPI
         from fastapi.responses import StreamingResponse
         from pydantic import BaseModel, Field
-        import uvicorn
     except ImportError as e:
         raise SystemExit(f"缺少服务依赖（{e}）。请安装 serving extras：uv sync --extra serving") from None
 
@@ -62,8 +68,13 @@ def main() -> None:
     parser.add_argument("--device", default=None)
     args = parser.parse_args()
 
-    llm = MiniMindLLM.build(args.weight, hidden_size=args.hidden_size,
-                            num_hidden_layers=args.num_hidden_layers, use_moe=args.use_moe, device=args.device)
+    llm = MiniMindLLM.build(
+        args.weight,
+        hidden_size=args.hidden_size,
+        num_hidden_layers=args.num_hidden_layers,
+        use_moe=args.use_moe,
+        device=args.device,
+    )
     app = FastAPI(title="minimind_reborn")
 
     class ChatRequest(BaseModel):
@@ -87,20 +98,26 @@ def main() -> None:
                 self.queue.put(None)
 
     def stream_chunks(request: ChatRequest):
-        prompt = llm.tokenizer.apply_chat_template(request.messages, tokenize=False,
-                                                   add_generation_prompt=True,
-                                                   tools=request.tools or None,
-                                                   open_thinking=request.open_thinking)
+        prompt = llm.tokenizer.apply_chat_template(
+            request.messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            tools=request.tools or None,
+            open_thinking=request.open_thinking,
+        )
         inputs = llm.tokenizer(prompt, return_tensors="pt", truncation=True).to(llm.device)
         queue: Queue = Queue()
         streamer = _Streamer(llm.tokenizer, queue)
 
         def _generate():
             try:
-                llm.generate_tokens(inputs["input_ids"], GenerateConfig(temperature=request.temperature,
-                                                                        top_p=request.top_p),
-                                    attention_mask=inputs["attention_mask"],
-                                    max_new_tokens=request.max_tokens, streamer=streamer)
+                llm.generate_tokens(
+                    inputs["input_ids"],
+                    GenerateConfig(temperature=request.temperature, top_p=request.top_p),
+                    attention_mask=inputs["attention_mask"],
+                    max_new_tokens=request.max_tokens,
+                    streamer=streamer,
+                )
             except Exception as e:  # noqa: BLE001
                 queue.put(json.dumps({"error": str(e)}, ensure_ascii=False))
                 queue.put(None)
@@ -123,12 +140,16 @@ def main() -> None:
                     thinking_ended = True
                     new_reason = full_text[emitted:pos]
                     if new_reason:
-                        yield json.dumps({"choices": [{"delta": {"reasoning_content": new_reason}}]}, ensure_ascii=False)
+                        yield json.dumps(
+                            {"choices": [{"delta": {"reasoning_content": new_reason}}]}, ensure_ascii=False
+                        )
                     emitted = len(full_text)
                 else:
                     new_reason = full_text[emitted:]
                     if new_reason:
-                        yield json.dumps({"choices": [{"delta": {"reasoning_content": new_reason}}]}, ensure_ascii=False)
+                        yield json.dumps(
+                            {"choices": [{"delta": {"reasoning_content": new_reason}}]}, ensure_ascii=False
+                        )
                     emitted = len(full_text)
             else:
                 new_content = full_text[emitted:]
@@ -138,8 +159,9 @@ def main() -> None:
         content, _, tool_calls = parse_response(full_text)
         if tool_calls:
             yield json.dumps({"choices": [{"delta": {"tool_calls": tool_calls}}]}, ensure_ascii=False)
-        yield json.dumps({"choices": [{"delta": {}, "finish_reason": "tool_calls" if tool_calls else "stop"}]},
-                         ensure_ascii=False)
+        yield json.dumps(
+            {"choices": [{"delta": {}, "finish_reason": "tool_calls" if tool_calls else "stop"}]}, ensure_ascii=False
+        )
 
     @app.post("/v1/chat/completions")
     async def chat_completions(request: ChatRequest):
@@ -148,9 +170,12 @@ def main() -> None:
                 (f"data: {chunk}\n\n" for chunk in stream_chunks(request)),
                 media_type="text/event-stream",
             )
-        result = llm.generate_text(request.messages,
-                                   GenerateConfig(temperature=request.temperature, top_p=request.top_p),
-                                   tools=request.tools or None, open_thinking=request.open_thinking)
+        result = llm.generate_text(
+            request.messages,
+            GenerateConfig(temperature=request.temperature, top_p=request.top_p),
+            tools=request.tools or None,
+            open_thinking=request.open_thinking,
+        )
         content, reasoning, tool_calls = parse_response(result["content"])
         message: dict = {"role": "assistant", "content": content}
         if reasoning:
@@ -162,8 +187,13 @@ def main() -> None:
             "object": "chat.completion",
             "created": int(time.time()),
             "model": request.model,
-            "choices": [{"index": 0, "message": message,
-                         "finish_reason": "tool_calls" if tool_calls else result["finish_reason"]}],
+            "choices": [
+                {
+                    "index": 0,
+                    "message": message,
+                    "finish_reason": "tool_calls" if tool_calls else result["finish_reason"],
+                }
+            ],
         }
 
     @app.get("/health")

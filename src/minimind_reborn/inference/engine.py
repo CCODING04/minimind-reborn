@@ -3,19 +3,18 @@
 用户代码里除 build 外不应出现任何环境/路径/设备处理；
 推理请求结构化返回并携带 request_id/延迟/停止原因（logging-metrics §4）。
 """
+
 from __future__ import annotations
 
-import logging
 import time
 import uuid
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import torch
 
 from minimind_reborn import envs
-from minimind_reborn.configuration.schemas import GenerateConfig, ModelConfig
+from minimind_reborn.configuration.schemas import GenerateConfig
 from minimind_reborn.inference.chat import ChatSession, render_chat, split_reasoning
 from minimind_reborn.inference.generator import GenerationOutput, generate
 from minimind_reborn.loggers import get_logger, warning_once
@@ -52,7 +51,7 @@ class MiniMindLLM:
         out_root: str | Path | None = None,
         device: str | None = None,
         dtype: str = "bf16",
-    ) -> "MiniMindLLM":
+    ) -> MiniMindLLM:
         """读 checkpoint → 建模型 → 加载权重 → 精度回退 → 设备搬运，一次收拢。
 
         config_path 给出时结构以快照为准（跨源一致性），否则用显式结构参数。
@@ -64,9 +63,13 @@ class MiniMindLLM:
             snap = json.loads(Path(config_path).read_text(encoding="utf-8"))
             m = snap["model"]
             cfg = MiniMindConfig(
-                hidden_size=m["hidden_size"], num_hidden_layers=m["num_hidden_layers"], use_moe=m["use_moe"],
-                vocab_size=m["vocab_size"], num_attention_heads=m["num_attention_heads"],
-                num_key_value_heads=m["num_key_value_heads"], dropout=0.0,
+                hidden_size=m["hidden_size"],
+                num_hidden_layers=m["num_hidden_layers"],
+                use_moe=m["use_moe"],
+                vocab_size=m["vocab_size"],
+                num_attention_heads=m["num_attention_heads"],
+                num_key_value_heads=m["num_key_value_heads"],
+                dropout=0.0,
             )
         else:
             cfg = MiniMindConfig(hidden_size=hidden_size, num_hidden_layers=num_hidden_layers, use_moe=use_moe)
@@ -90,8 +93,12 @@ class MiniMindLLM:
             f"模型词表({cfg.vocab_size}) 与 tokenizer 词表({len(tokenizer)}) 不一致——"
             f"权重与 tokenizer 来自不同训练产物，禁止混用"
         )
-        logger.info("引擎就绪：%s | %s | %.2fM 参数", weight_path.name, device,
-                    sum(p.numel() for p in model.parameters()) / 1e6)
+        logger.info(
+            "引擎就绪：%s | %s | %.2fM 参数",
+            weight_path.name,
+            device,
+            sum(p.numel() for p in model.parameters()) / 1e6,
+        )
         return cls(model, tokenizer, device, target_dtype)
 
     # ---------- 内核层（token in / GenerationOutput out） ----------
@@ -108,7 +115,9 @@ class MiniMindLLM:
         if attention_mask is not None:
             attention_mask = attention_mask.to(self.device)
         return generate(
-            self.model, input_ids, gen,
+            self.model,
+            input_ids,
+            gen,
             eos_token_id=self.tokenizer.eos_token_id,
             pad_token_id=self.tokenizer.pad_token_id,
             max_new_tokens=max_new_tokens,
@@ -136,12 +145,14 @@ class MiniMindLLM:
             prompt = render_chat(self.tokenizer, messages, tools=tools, open_thinking=open_thinking)
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True).to(self.device)
         out = generate(
-            self.model, inputs["input_ids"], gen,
+            self.model,
+            inputs["input_ids"],
+            gen,
             eos_token_id=self.tokenizer.eos_token_id,
             pad_token_id=self.tokenizer.pad_token_id,
             attention_mask=inputs["attention_mask"],
         )
-        new_tokens = out["sequences"][0, inputs["input_ids"].shape[1]:]
+        new_tokens = out["sequences"][0, inputs["input_ids"].shape[1] :]
         text = self._decode_truncated(new_tokens)
         reasoning, content = split_reasoning(text)
         latency = time.perf_counter() - started
@@ -154,8 +165,13 @@ class MiniMindLLM:
             "latency_ms": round(latency * 1000, 1),
             "latency_per_token_ms": round(latency * 1000 / max(new_tokens.shape[0], 1), 2),
         }
-        logger.info("推理完成 request_id=%s finish=%s tokens=%d 延迟=%.0fms",
-                    request_id, result["finish_reason"], result["generated_tokens"], result["latency_ms"])
+        logger.info(
+            "推理完成 request_id=%s finish=%s tokens=%d 延迟=%.0fms",
+            request_id,
+            result["finish_reason"],
+            result["generated_tokens"],
+            result["latency_ms"],
+        )
         return result
 
     def chat_session(self, gen: GenerateConfig | None = None, *, pretrain_mode: bool = False) -> ChatSession:

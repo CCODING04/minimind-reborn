@@ -3,6 +3,7 @@
 训练入口自动生成 env.json：git commit + dirty 标记、python/torch/cuda 版本、
 GPU 型号与数量、主机名、seed。事后只凭输出目录能回答"什么环境"。
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,9 @@ def _git_info(repo_dir: Path) -> dict[str, str]:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=repo_dir, capture_output=True, text=True, timeout=10, check=True
         ).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain"], cwd=repo_dir, capture_output=True, text=True, timeout=10).stdout.strip()
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=repo_dir, capture_output=True, text=True, timeout=10
+        ).stdout.strip()
         return {"commit": commit, "dirty": bool(dirty)}
     except (OSError, subprocess.SubprocessError):
         return {"commit": "unknown", "dirty": False}
@@ -57,5 +60,7 @@ def dump(run_dir: str | Path, seed: int | None = None) -> Path:
     from minimind_reborn.utils.io import atomic_write_json
 
     path = atomic_write_json(fp, Path(run_dir) / "env.json")
-    logger.info("环境指纹：%s", json.dumps({k: fp[k] for k in ("torch", "cuda_runtime", "gpu", "seed")}, ensure_ascii=False))
+    logger.info(
+        "环境指纹：%s", json.dumps({k: fp[k] for k in ("torch", "cuda_runtime", "gpu", "seed")}, ensure_ascii=False)
+    )
     return path

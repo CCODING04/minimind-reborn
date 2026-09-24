@@ -1,4 +1,5 @@
 """MiniMindConfig：与官方 model_type="minimind" 字段级兼容（config.json 可互载）。"""
+
 from __future__ import annotations
 
 import math
@@ -36,7 +37,9 @@ class MiniMindConfig(PretrainedConfig):
         router_aux_loss_coef: float = 5e-4,
         **kwargs,
     ):
-        super().__init__(bos_token_id=bos_token_id, eos_token_id=eos_token_id, tie_word_embeddings=tie_word_embeddings, **kwargs)
+        super().__init__(
+            bos_token_id=bos_token_id, eos_token_id=eos_token_id, tie_word_embeddings=tie_word_embeddings, **kwargs
+        )
         self.hidden_size = hidden_size
         self.num_hidden_layers = num_hidden_layers
         self.use_moe = use_moe

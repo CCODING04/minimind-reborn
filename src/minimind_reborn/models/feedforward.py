@@ -1,4 +1,5 @@
 """前馈子模块：SwiGLU FFN 与 MoE。"""
+
 from __future__ import annotations
 
 import torch

@@ -3,17 +3,17 @@
 协议而非强制继承（project-structure §4）：同签名 rollout()/update_policy() 即可互换；
 torch 原生引擎用于单卡/小模型，sglang HTTP 引擎用于加速大规模 RL（可选）。
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor
 from torch.nn.parallel import DistributedDataParallel
 
-from minimind_reborn.configuration.schemas import GenerateConfig, RLConfig, RunConfig
+from minimind_reborn.configuration.schemas import GenerateConfig, RunConfig
 from minimind_reborn.inference.generator import generate
 from minimind_reborn.loggers import get_logger
 from minimind_reborn.models.weights import unwrap_model
@@ -23,17 +23,15 @@ logger = get_logger("rollout")
 
 @dataclass
 class RolloutResult:
-    output_ids: Tensor          # (b, prompt+completion) 右 padding
-    completion_ids: Tensor      # (b, R)
-    per_token_logps: Tensor     # (b, R) 采样时策略的逐 token logp
-    completions: list[str]      # 解码文本
-    prompt_lens: Tensor         # (b,)
-    completion_mask: Tensor     # (b, R) 1=有效生成位
+    output_ids: Tensor  # (b, prompt+completion) 右 padding
+    completion_ids: Tensor  # (b, R)
+    per_token_logps: Tensor  # (b, R) 采样时策略的逐 token logp
+    completions: list[str]  # 解码文本
+    prompt_lens: Tensor  # (b,)
+    completion_mask: Tensor  # (b, R) 1=有效生成位
 
 
-def compute_per_token_logps(
-    model, input_ids: Tensor, n_keep: int, attention_mask: Tensor | None = None
-) -> Tensor:
+def compute_per_token_logps(model, input_ids: Tensor, n_keep: int, attention_mask: Tensor | None = None) -> Tensor:
     """给定完整序列，取最后 n_keep 个 token 的策略 logp（教学/对齐检查用）。"""
     if n_keep <= 0:
         return input_ids.new_empty((input_ids.size(0), 0), dtype=torch.float32)
@@ -42,15 +40,21 @@ def compute_per_token_logps(
     ids = input_ids.detach().clone() if input_ids.is_inference() else input_ids
     logits = unwrapped(ids, attention_mask=attention_mask, logits_to_keep=n_keep + 1).logits[:, :-1, :]
     per_token = []
-    for row_logits, row_ids in zip(logits, ids[:, -n_keep:]):
+    for row_logits, row_ids in zip(logits, ids[:, -n_keep:], strict=False):
         row_ids = row_ids.detach().clone() if row_ids.is_inference() else row_ids
         per_token.append(torch.gather(row_logits.log_softmax(dim=-1), 1, row_ids.unsqueeze(1)).squeeze(1))
     return torch.stack(per_token)
 
 
 class RolloutEngine(Protocol):
-    def rollout(self, prompt_ids: Tensor, attention_mask: Tensor, num_generations: int,
-                max_new_tokens: int, temperature: float = 0.8) -> RolloutResult: ...
+    def rollout(
+        self,
+        prompt_ids: Tensor,
+        attention_mask: Tensor,
+        num_generations: int,
+        max_new_tokens: int,
+        temperature: float = 0.8,
+    ) -> RolloutResult: ...
 
     def update_policy(self, model) -> None: ...
 
@@ -64,8 +68,14 @@ class TorchRolloutEngine:
         self.device = device
 
     @torch.no_grad()
-    def rollout(self, prompt_ids: Tensor, attention_mask: Tensor, num_generations: int,
-                max_new_tokens: int, temperature: float = 0.8) -> RolloutResult:
+    def rollout(
+        self,
+        prompt_ids: Tensor,
+        attention_mask: Tensor,
+        num_generations: int,
+        max_new_tokens: int,
+        temperature: float = 0.8,
+    ) -> RolloutResult:
         model = unwrap_model(self.policy_model)
         gen = GenerateConfig(temperature=temperature, top_p=0.95, top_k=50)
         # repeat_interleave 到 (b·num_gen, P)；generate 内部预分配 KV cache
@@ -82,11 +92,16 @@ class TorchRolloutEngine:
         prompt_len = prompt_ids.shape[1]
         completion_ids = output_ids[:, prompt_len:]
         per_token_logps = compute_per_token_logps(
-            self.policy_model, output_ids, completion_ids.shape[1],
-            attention_mask=torch.cat([
-                attention_mask.detach().repeat_interleave(num_generations, dim=0),
-                attention_mask.new_ones(output_ids.shape[0], completion_ids.shape[1]),
-            ], dim=1),
+            self.policy_model,
+            output_ids,
+            completion_ids.shape[1],
+            attention_mask=torch.cat(
+                [
+                    attention_mask.detach().repeat_interleave(num_generations, dim=0),
+                    attention_mask.new_ones(output_ids.shape[0], completion_ids.shape[1]),
+                ],
+                dim=1,
+            ),
         )
         completions = self.tokenizer.batch_decode(completion_ids, skip_special_tokens=True)
         return RolloutResult(
@@ -107,7 +122,6 @@ class SGLangRolloutEngine:
 
     def __init__(self, base_url: str, model_path: str, shared_ckpt_path: str = "sglang_ckpt", timeout: int = 120):
         import requests
-
         from transformers import AutoTokenizer
 
         self._requests = requests
@@ -117,10 +131,16 @@ class SGLangRolloutEngine:
         self.timeout = timeout
         self.tokenizer = AutoTokenizer.from_pretrained(model_path)
 
-    def rollout(self, prompt_ids: Tensor, attention_mask: Tensor, num_generations: int,
-                max_new_tokens: int, temperature: float = 0.8) -> RolloutResult:
+    def rollout(
+        self,
+        prompt_ids: Tensor,
+        attention_mask: Tensor,
+        num_generations: int,
+        max_new_tokens: int,
+        temperature: float = 0.8,
+    ) -> RolloutResult:
         input_ids_list = []
-        for ids, mask in zip(prompt_ids, attention_mask):
+        for ids, mask in zip(prompt_ids, attention_mask, strict=False):
             input_ids_list.append(ids[mask.bool()].tolist())
         all_input_ids = [ids for ids in input_ids_list for _ in range(num_generations)]
         payload = {
@@ -147,7 +167,7 @@ class SGLangRolloutEngine:
             full = all_input_ids[i] + list(c_ids)
             outs.append(full)
             comps_ids.append(list(c_ids))
-            logps.append(raw_lp[-len(c_ids):] if c_ids else [])
+            logps.append(raw_lp[-len(c_ids) :] if c_ids else [])
             comps.append(self.tokenizer.decode(c_ids, skip_special_tokens=True))
         device = prompt_ids.device
         max_c = max(1, max(len(x) for x in comps_ids))
@@ -171,15 +191,20 @@ class SGLangRolloutEngine:
         import os
 
         ok = True
-        if not DistributedDataParallel.is_available() or not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
+        if (
+            not DistributedDataParallel.is_available()
+            or not torch.distributed.is_initialized()
+            or torch.distributed.get_rank() == 0
+        ):
             try:
                 unwrapped = unwrap_model(model)
                 path = os.path.abspath(self.shared_ckpt_path)
                 state = {k: v.detach().half().cpu() for k, v in unwrapped.state_dict().items()}
                 unwrapped.save_pretrained(path, state_dict=state, safe_serialization=False)
                 self.tokenizer.save_pretrained(path)
-                resp = self._requests.post(f"{self.base_url}/update_weights_from_disk",
-                                     json={"model_path": path}, timeout=self.timeout)
+                resp = self._requests.post(
+                    f"{self.base_url}/update_weights_from_disk", json={"model_path": path}, timeout=self.timeout
+                )
                 ok = resp.status_code == 200
                 if not ok:
                     logger.warning("sglang update_weights 失败：%s %s", resp.status_code, resp.text[:200])

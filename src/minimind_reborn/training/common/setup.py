@@ -1,4 +1,5 @@
 """workflow 共用助手：tokenizer / 模型 / 数据集的统一组装点。"""
+
 from __future__ import annotations
 
 import torch
@@ -38,8 +39,12 @@ def build_lm_dataset(cfg: RunConfig, tokenizer, kind: str):
         ds = PretrainDataset(path, tokenizer, max_length=cfg.data.max_seq_len, eval_ratio=cfg.data.eval_ratio)
     elif kind == "sft":
         ds = SFTDataset(
-            path, tokenizer, max_length=cfg.data.max_seq_len, eval_ratio=cfg.data.eval_ratio,
-            add_system_ratio=cfg.data.add_system_ratio, empty_think_ratio=cfg.data.empty_think_ratio,
+            path,
+            tokenizer,
+            max_length=cfg.data.max_seq_len,
+            eval_ratio=cfg.data.eval_ratio,
+            add_system_ratio=cfg.data.add_system_ratio,
+            empty_think_ratio=cfg.data.empty_think_ratio,
         )
     else:
         raise ValueError(f"kind {kind!r} 不支持 eval 切分")

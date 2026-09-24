@@ -3,19 +3,20 @@
 不变量 4 的验证形态——"有无 cache 的自回归生成必须逐位一致"，
 这是生成正确性的头号杀手（mask off-by-one）的长文本自回归测试。
 """
+
 from __future__ import annotations
 
 import torch
 
 from minimind_reborn.configuration.schemas import GenerateConfig
 from minimind_reborn.models import KVCache
-from minimind_reborn.models.model import MiniMindForCausalLM
 
 
 def test_kv_cache_inplace_slice_no_realloc():
     """写入是原地切片，容量一次分配、全程不重新分配。"""
-    cache = KVCache(num_layers=2, max_batch_size=2, max_seq_len=32,
-                    num_kv_heads=1, head_dim=8, dtype=torch.float32, device="cpu")
+    cache = KVCache(
+        num_layers=2, max_batch_size=2, max_seq_len=32, num_kv_heads=1, head_dim=8, dtype=torch.float32, device="cpu"
+    )
     k = torch.randn(2, 3, 1, 8)
     id_before = cache.k.data_ptr()
     cache.write(0, k, k, start=0)

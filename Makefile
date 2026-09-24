@@ -14,8 +14,7 @@ quality:  ## 只查不改（CI 同源）
 	$(UV) run ruff@$(RUFF_VERSION) check .
 
 test:  ## 测试：强制离线（metrics 全部替换 null，禁云端上报）
-	MINIMID_REBORN_METRICS_DISABLED=1 MINIMIND_REBORN_METRICS_DISABLED=1 \
-	$(PYTHON) -m pytest tests/ -m "not slow" $(PYTEST_ARGS)
+	MINIMIND_REBORN_METRICS_DISABLED=1 $(PYTHON) -m pytest tests/ -m "not slow" $(PYTEST_ARGS)
 
 smoke:  ## tiny 模型全链路冒烟（pretrain→sft→dpo）
 	$(PYTHON) tools/train.py configs/smoke/smoke_pretrain.yaml

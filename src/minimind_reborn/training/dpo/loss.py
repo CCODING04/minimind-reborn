@@ -1,4 +1,5 @@
 """DPO 损失（与官方 train_dpo.py 的实现语义一致，纯函数可单测）。"""
+
 from __future__ import annotations
 
 import torch

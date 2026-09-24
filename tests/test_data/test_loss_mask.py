@@ -1,4 +1,5 @@
 """loss mask 逐 token 断言（全系统最脆的耦合，testing-quality §5 文档即测试）。"""
+
 from __future__ import annotations
 
 from minimind_reborn.constants import ASSISTANT_PREFIX_TEXT, RESPONSE_SUFFIX_TEXT
@@ -25,12 +26,12 @@ def test_single_response_span(tokenizer):
     start, stop = spans[0]
     # 区间恰好从回答首 token 到 <|im_end|>\n 结尾
     assert tokenizer.decode(ids[start:stop]).startswith("<think>") or True
-    assert tokenizer.decode(ids[stop - len(suffix_ids): stop]) == RESPONSE_SUFFIX_TEXT
+    assert tokenizer.decode(ids[stop - len(suffix_ids) : stop]) == RESPONSE_SUFFIX_TEXT
     labels = build_labels(ids, spans)
     # 区间外全部 ignore；区间内保留原 id
-    assert all(l == -100 for l in labels[:start])
+    assert all(lab == -100 for lab in labels[:start])
     assert all(labels[j] == ids[j] for j in range(start, stop))
-    assert all(l == -100 for l in labels[stop:])
+    assert all(lab == -100 for lab in labels[stop:])
 
 
 def test_multi_turn_two_spans(tokenizer):
@@ -45,7 +46,7 @@ def test_multi_turn_two_spans(tokenizer):
     spans = find_response_spans(ids, prefix_ids, suffix_ids)
     assert len(spans) == 2
     mask = build_mask(ids, spans)
-    a1 = tokenizer.decode([i for i, m in zip(ids, mask) if m == 1])
+    a1 = tokenizer.decode([i for i, m in zip(ids, mask, strict=False) if m == 1])
     assert "A1" in a1 and "A2" in a1 and "Q1" not in a1
 
 

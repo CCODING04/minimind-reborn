@@ -6,6 +6,7 @@
 - 类型不符报错（字符串 "0.001" 覆盖 float 是经典事故）；
 - 解析完成后经过唯一守门人 validate_and_derive：互斥检查、跨域依赖检查、派生参数推导。
 """
+
 from __future__ import annotations
 
 import ast
@@ -111,10 +112,14 @@ def _apply_override(cfg: RunConfig, override: str) -> None:
     if field_name not in field_types:
         raise ValueError(f"未知配置项 '{domain}.{field_name}'。合法项：{sorted(field_types)}")
     current = getattr(target, field_name)
-    try:
-        value = ast.literal_eval(raw)
-    except (ValueError, SyntaxError):
-        value = raw  # 字符串字面量：交给类型断言拦下不匹配者
+    low = raw.strip().lower()
+    if low in ("true", "false"):
+        value = low == "true"  # CLI 习惯：小写布尔字面量
+    else:
+        try:
+            value = ast.literal_eval(raw)
+        except (ValueError, SyntaxError):
+            value = raw  # 字符串字面量：交给类型断言拦下不匹配者
     setattr(target, field_name, _coerce_type(value, current, f"{domain}.{field_name}"))
 
 
@@ -152,7 +157,8 @@ def validate_and_derive(cfg: RunConfig) -> RunConfig:
     m.moe_intermediate_size = m.moe_intermediate_size or m.intermediate_size
     if m.num_attention_heads % m.num_key_value_heads != 0:
         raise ValueError(
-            f"num_attention_heads({m.num_attention_heads}) 必须被 num_key_value_heads({m.num_key_value_heads}) 整除（GQA 约束）"
+            f"num_attention_heads({m.num_attention_heads}) 必须被 "
+            f"num_key_value_heads({m.num_key_value_heads}) 整除（GQA 约束）"
         )
     if m.hidden_size % m.num_attention_heads != 0:
         raise ValueError(f"hidden_size({m.hidden_size}) 必须被 num_attention_heads({m.num_attention_heads}) 整除")
@@ -166,7 +172,9 @@ def validate_and_derive(cfg: RunConfig) -> RunConfig:
     if t.max_steps == 0:
         raise ValueError("max_steps=0 语义歧义（哨兵是 -1 表示不截断）；要跑 0 步请直接不启动训练")
     if t.eval_interval_steps < 0 or t.save_interval_steps < 1:
-        raise ValueError(f"eval_interval_steps({t.eval_interval_steps})/save_interval_steps({t.save_interval_steps}) 非法")
+        raise ValueError(
+            f"eval_interval_steps({t.eval_interval_steps})/save_interval_steps({t.save_interval_steps}) 非法"
+        )
 
     # ---- 数据域校验 ----
     d = cfg.data

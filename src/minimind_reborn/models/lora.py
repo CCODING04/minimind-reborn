@@ -4,6 +4,7 @@
 保持一致——A 高斯初始化 / B 零初始化保证训练起点等价于基模。
 注意：monkey-patch 与 torch.compile 不兼容（官方已知，lora workflow 里强制关闭）。
 """
+
 from __future__ import annotations
 
 import logging
@@ -66,7 +67,7 @@ def load_lora(model: nn.Module, path: str | Path) -> None:
     for name, module in model.named_modules():
         if hasattr(module, "lora"):
             prefix = f"{name}.lora."
-            lora_state = {k[len(prefix):]: v for k, v in state_dict.items() if k.startswith(prefix)}
+            lora_state = {k[len(prefix) :]: v for k, v in state_dict.items() if k.startswith(prefix)}
             if lora_state:
                 module.lora.load_state_dict(lora_state)  # type: ignore[attr-defined]
 

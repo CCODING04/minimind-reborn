@@ -2,6 +2,7 @@
 
 只放"代码自身无法推导"的固定语义；可调参数一律走 configuration。
 """
+
 from __future__ import annotations
 
 # ===== 特殊 token（与官方 minimind tokenizer 完全一致，保证权重与数据互通） =====

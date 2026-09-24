@@ -1,4 +1,5 @@
 """模型前向与结构不变量测试。"""
+
 from __future__ import annotations
 
 import torch

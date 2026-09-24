@@ -4,6 +4,7 @@
 tensorboard/swanlab 可选并列挂载；测试强制 null 后端（Makefile test 目标设置
 MINIMID_REBORN_METRICS_DISABLED=1 + metrics=null）。
 """
+
 from __future__ import annotations
 
 import json
@@ -86,7 +87,9 @@ class SwanLabBackend:
         import swanlab
 
         self._swanlab = swanlab
-        self.run = swanlab.init(project=project, experiment_name=run_name, id=run_id, resume="must" if run_id else None)
+        self.run = swanlab.init(
+            project=project, experiment_name=run_name, id=run_id, resume="must" if run_id else None
+        )
 
     def log_scalar(self, key: str, value: float, step: int) -> None:
         self._swanlab.log({key: value}, step=step)
@@ -106,8 +109,14 @@ _BACKENDS = {
 }
 
 
-def build_backends(names: list[str], run_dir: str | Path, *, project: str = "minimind-reborn",
-                   run_name: str = "run", run_id: str | None = None) -> list[MetricBackend]:
+def build_backends(
+    names: list[str],
+    run_dir: str | Path,
+    *,
+    project: str = "minimind-reborn",
+    run_name: str = "run",
+    run_id: str | None = None,
+) -> list[MetricBackend]:
     """按名字构建后端列表；jsonl 永远追加在首位（本地兜底不依赖配置）。
 
     环境变量 MINIMIND_REBORN_METRICS_DISABLED=1 时全部替换为 null（测试/CI 强制离线）。

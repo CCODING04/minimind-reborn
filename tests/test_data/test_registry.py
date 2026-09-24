@@ -1,4 +1,5 @@
 """注册表测试：声明式资源未注册名必须报错并指明 json 路径。"""
+
 from __future__ import annotations
 
 import pytest

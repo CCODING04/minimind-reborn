@@ -4,11 +4,10 @@
     uv run python tools/train.py configs/pretrain_26m.yaml
     uv run python tools/train.py configs/pretrain_26m.yaml --set train.max_steps=10 --set model.hidden_size=512
 """
+
 from __future__ import annotations
 
 import argparse
-
-import torch
 
 from minimind_reborn.configuration import load_config
 from minimind_reborn.loggers import catch_main, get_logger, setup_logging
@@ -32,8 +31,14 @@ WORKFLOWS = {
 def main() -> None:
     parser = argparse.ArgumentParser(description="minimind_reborn 训练入口（配方 yaml 即实验名）")
     parser.add_argument("recipe", nargs="?", default=None, help="配方文件路径（configs/*.yaml）")
-    parser.add_argument("--set", dest="overrides", action="append", default=[],
-                        metavar="domain.field=value", help="命令行覆盖（yaml 之后生效，未知 key 报错）")
+    parser.add_argument(
+        "--set",
+        dest="overrides",
+        action="append",
+        default=[],
+        metavar="domain.field=value",
+        help="命令行覆盖（yaml 之后生效，未知 key 报错）",
+    )
     args = parser.parse_args()
 
     local_rank = dist.init_distributed()

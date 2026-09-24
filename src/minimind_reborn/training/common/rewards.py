@@ -3,6 +3,7 @@
 规则奖励（长度/思考闭合/重复惩罚）+ 可选外部 reward model 打分；
 总分截断到 [-3, 3]（官方语义）。
 """
+
 from __future__ import annotations
 
 import re
@@ -50,6 +51,6 @@ def total_reward(prompt_text: str, response: str, reward_model=None, device: str
 
 def batch_rewards(prompts: list[str], responses: list[str], reward_model=None, device: str = "cuda") -> torch.Tensor:
     return torch.tensor(
-        [total_reward(p, r, reward_model, device) for p, r in zip(prompts, responses)],
+        [total_reward(p, r, reward_model, device) for p, r in zip(prompts, responses, strict=False)],
         device=device,
     )

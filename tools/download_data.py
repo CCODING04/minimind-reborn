@@ -2,6 +2,7 @@
 
 用法：uv run python tools/download_data.py --name rlaif_mini
 """
+
 from __future__ import annotations
 
 import argparse

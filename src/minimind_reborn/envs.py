@@ -2,6 +2,7 @@
 
 惰性读取 + 进程内缓存 + 类型化；业务代码不允许直接摸 os.environ。
 """
+
 from __future__ import annotations
 
 import os

@@ -1,4 +1,5 @@
 """交互对话入口：封装 MiniMindLLM（build 工厂），支持 thinking 开关与速度统计。"""
+
 from __future__ import annotations
 
 import argparse
@@ -23,8 +24,11 @@ def main() -> None:
     args = parser.parse_args()
 
     llm = MiniMindLLM.build(
-        args.weight, hidden_size=args.hidden_size, num_hidden_layers=args.num_hidden_layers,
-        use_moe=args.use_moe, device=args.device,
+        args.weight,
+        hidden_size=args.hidden_size,
+        num_hidden_layers=args.num_hidden_layers,
+        use_moe=args.use_moe,
+        device=args.device,
     )
     gen = GenerateConfig(temperature=args.temperature, top_p=args.top_p, max_new_tokens=args.max_new_tokens)
     pretrain_mode = "pretrain" in args.weight

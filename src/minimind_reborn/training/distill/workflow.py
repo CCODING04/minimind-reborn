@@ -1,4 +1,5 @@
 """蒸馏 workflow：学生 = 当前模型，教师 = 配置指定的更大/同构权重（eval + no_grad）。"""
+
 from __future__ import annotations
 
 import torch
@@ -23,8 +24,10 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0) -> Tr
 
     dc = cfg.distill
     teacher_cfg = MiniMindConfig(
-        hidden_size=dc.teacher_hidden_size, num_hidden_layers=dc.teacher_num_layers,
-        use_moe=dc.teacher_use_moe, vocab_size=cfg.model.vocab_size,
+        hidden_size=dc.teacher_hidden_size,
+        num_hidden_layers=dc.teacher_num_layers,
+        use_moe=dc.teacher_use_moe,
+        vocab_size=cfg.model.vocab_size,
         # attention 拓扑跟随 student 配置（teacher 只在 hidden/layers/MoE 上与学生不同）
         num_attention_heads=cfg.model.num_attention_heads,
         num_key_value_heads=cfg.model.num_key_value_heads,
@@ -59,8 +62,15 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0) -> Tr
         return loss, {"train/ce": ce_mean.item(), "train/kl": kl.item(), "train/aux_loss": float(out.aux_loss)}
 
     trainer = Trainer(
-        cfg, student, tokenizer, train_ds, eval_ds,
-        compute_loss=compute_loss, save_weight="full_dist", device=device, local_rank=local_rank,
+        cfg,
+        student,
+        tokenizer,
+        train_ds,
+        eval_ds,
+        compute_loss=compute_loss,
+        save_weight="full_dist",
+        device=device,
+        local_rank=local_rank,
     )
     trainer.run()
     return trainer

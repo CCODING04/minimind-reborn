@@ -5,6 +5,7 @@
 这是全系统最脆的耦合（依赖模板恰好产出该格式），tests/test_data/test_loss_mask.py
 用真实 tokenizer 逐 token 断言锁定。
 """
+
 from __future__ import annotations
 
 from minimind_reborn.constants import ASSISTANT_PREFIX_TEXT, RESPONSE_SUFFIX_TEXT
@@ -14,9 +15,7 @@ def _match_at(seq: list[int], pattern: list[int], i: int) -> bool:
     return seq[i : i + len(pattern)] == pattern
 
 
-def find_response_spans(
-    input_ids: list[int], prefix_ids: list[int], suffix_ids: list[int]
-) -> list[tuple[int, int]]:
+def find_response_spans(input_ids: list[int], prefix_ids: list[int], suffix_ids: list[int]) -> list[tuple[int, int]]:
     """扫描出每个 assistant 回答的 [start, end) 半开区间（start 在回答首 token，end 含结尾 suffix）。
 
     与官方 generate_labels/generate_loss_mask 的扫描语义逐行等价：

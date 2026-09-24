@@ -4,6 +4,7 @@
 进度(epoch/step) + 配置快照 + best 指标 + RNG 状态（位精确恢复）。
 规则：只有 rank0 写盘（调用方门控）；原子替换防中断留坏文件。
 """
+
 from __future__ import annotations
 
 import random
@@ -14,8 +15,8 @@ import numpy as np
 import torch
 
 from minimind_reborn.loggers import get_logger
-from minimind_reborn.utils.io import atomic_save
 from minimind_reborn.utils.dist import get_world_size
+from minimind_reborn.utils.io import atomic_save
 
 logger = get_logger("checkpoint")
 

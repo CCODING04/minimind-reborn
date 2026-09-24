@@ -1,4 +1,5 @@
 """collator：变长结构批处理（定长 tensor 字段走 torch 默认 collate，无需自定义）。"""
+
 from __future__ import annotations
 
 from typing import Any

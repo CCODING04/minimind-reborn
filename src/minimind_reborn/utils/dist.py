@@ -4,6 +4,7 @@
 在 dist 不可用/未初始化时返回 0/1，单机与多机代码同构；
 一切 IO 由 is_main_process() 门控。
 """
+
 from __future__ import annotations
 
 import datetime

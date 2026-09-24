@@ -1,4 +1,5 @@
 """RL 系 workflow 公共件：四件套落盘 / 保存 / 续训（不走 Trainer 基件的循环用这些）。"""
+
 from __future__ import annotations
 
 import time
@@ -53,8 +54,13 @@ class RLSession:
         save_inference_weights(model, weight_path)
         save_checkpoint(
             checkpoint_path(self.ckpt_dir, self.save_weight, self.cfg.model.hidden_size, self.cfg.model.use_moe),
-            model=model, optimizer=optimizer, scaler=None,  # RL 不用 scaler（bf16 无 scale 语义）
-            epoch=epoch, step=step, config_snapshot=snapshot(self.cfg), best_val_loss=None,
+            model=model,
+            optimizer=optimizer,
+            scaler=None,  # RL 不用 scaler（bf16 无 scale 语义）
+            epoch=epoch,
+            step=step,
+            config_snapshot=snapshot(self.cfg),
+            best_val_loss=None,
             extra_states=extra_states,
         )
         logger.info("已保存 %s（epoch=%d step=%d）", weight_path.name, epoch + 1, step)
@@ -75,8 +81,9 @@ class RLSession:
         scheduler.load_state_dict(data["scheduler"])
         for key, obj in (extra or {}).items():
             obj.load_state_dict(data[key])
-        logger.info("RL 续训恢复：epoch=%d step=%d（含 %d 个扩展状态）",
-                    data["epoch"], data.get("step", 0), len(extra or {}))
+        logger.info(
+            "RL 续训恢复：epoch=%d step=%d（含 %d 个扩展状态）", data["epoch"], data.get("step", 0), len(extra or {})
+        )
         return data["epoch"], data.get("step", 0)
 
     def close(self) -> None:

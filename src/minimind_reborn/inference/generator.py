@@ -5,6 +5,7 @@
 2. 循环级：batch 内全部序列都结束后才 break（支持长短不一）；
 3. 后处理级：解码后按停止 token 截断尾部残留（在 chat/engine 层做）。
 """
+
 from __future__ import annotations
 
 from typing import TypedDict
@@ -20,9 +21,9 @@ from minimind_reborn.models.model import MiniMindForCausalLM
 class GenerationOutput(TypedDict):
     """结构化返回（不返回裸 tensor 语义由调用方组装文本）。"""
 
-    sequences: torch.Tensor        # (b, prompt+generated)
-    generated_ids: torch.Tensor    # (b, generated)
-    finish_reasons: list[str]      # 每条序列："stop" | "length"
+    sequences: torch.Tensor  # (b, prompt+generated)
+    generated_ids: torch.Tensor  # (b, generated)
+    finish_reasons: list[str]  # 每条序列："stop" | "length"
 
 
 @torch.inference_mode()
@@ -94,7 +95,7 @@ def generate(
 
     gen_ids = torch.cat(generated, dim=1) if generated else torch.zeros(batch, 0, dtype=torch.long, device=device)
     if eos_token_id is not None:
-        hit = (gen_ids == eos_token_id)
+        hit = gen_ids == eos_token_id
         has_eos = hit.any(dim=1)
         finish_reasons = ["stop" if h else "length" for h in has_eos.tolist()]
     if streamer is not None:

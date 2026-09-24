@@ -4,12 +4,12 @@ train = before → try: epoch 循环 → finally: after。
 范式子包只提供 compute_loss(batch, model) -> (loss, log_metrics) 与数据组装。
 梯度/AMP/裁剪/续训/评估/保存的顺序与不变量固定在此处，任何范式不得绕过。
 """
+
 from __future__ import annotations
 
-import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import torch
 from torch.nn.parallel import DistributedDataParallel
@@ -19,11 +19,11 @@ from minimind_reborn import env_fingerprint
 from minimind_reborn.configuration.schemas import RunConfig
 from minimind_reborn.loggers import get_logger
 from minimind_reborn.metrics import MetricLogger, build_backends
+from minimind_reborn.models.weights import resolve_weight_path, save_inference_weights
 from minimind_reborn.training.common.amp import autocast_context, build_scaler, resolve_dtype
 from minimind_reborn.training.common.checkpoint import checkpoint_path, load_checkpoint, save_checkpoint
 from minimind_reborn.training.common.lr import get_lr
 from minimind_reborn.training.common.optim import configure_optimizers
-from minimind_reborn.models.weights import resolve_weight_path, save_inference_weights
 from minimind_reborn.utils import dist
 from minimind_reborn.utils.io import atomic_write_json
 
@@ -117,13 +117,16 @@ class Trainer:
             atomic_write_json(snapshot(cfg), self.run_dir / "config.json")
             env_fingerprint.dump(self.run_dir, seed=t.seed)
 
-        self.metrics = MetricLogger(build_backends(cfg.metrics.backends, self.run_dir, project=cfg.metrics.project,
-                                                  run_name=cfg.recipe_name))
+        self.metrics = MetricLogger(
+            build_backends(cfg.metrics.backends, self.run_dir, project=cfg.metrics.project, run_name=cfg.recipe_name)
+        )
 
         self.raw_model = model.to(self.device)
         self.scaler = build_scaler(self.dtype)
         self.optimizer = configure_optimizers(
-            self.raw_model, t.learning_rate, t.weight_decay,
+            self.raw_model,
+            t.learning_rate,
+            t.weight_decay,
             params=self.optimizer_params if self.optimizer_params is not None else None,
         )
         self.best_val_loss: float | None = None
@@ -147,12 +150,16 @@ class Trainer:
     # ============ 生命周期 ============
     def run(self) -> None:
         cfg = self.cfg
-        total = sum(
-            p.numel() for p in self.raw_model.parameters() if p.requires_grad
-        ) / 1e6
+        total = sum(p.numel() for p in self.raw_model.parameters() if p.requires_grad) / 1e6
         logger.info(
             "训练启动 stage=%s recipe=%s | %.2fM 可训练参数 | dtype=%s device=%s world=%d | 数据=%s",
-            cfg.stage, cfg.recipe_name, total, cfg.train.dtype, self.device, dist.get_world_size(), cfg.data.dataset,
+            cfg.stage,
+            cfg.recipe_name,
+            total,
+            cfg.train.dtype,
+            self.device,
+            dist.get_world_size(),
+            cfg.data.dataset,
         )
         try:
             for epoch in range(self.start_epoch, cfg.train.epochs):
@@ -186,9 +193,14 @@ class Trainer:
 
         for offset, batch in enumerate(loader, start=start_step):
             global_micro = epoch * iters + offset
-            total_micro = min(cfg.train.epochs * iters, cfg.train.max_steps) if cfg.train.max_steps > 0 else cfg.train.epochs * iters
-            lr = get_lr(global_micro, total_micro, t.learning_rate,
-                        warmup_steps=t.warmup_steps, min_ratio=t.lr_min_ratio)
+            total_micro = (
+                min(cfg.train.epochs * iters, cfg.train.max_steps)
+                if cfg.train.max_steps > 0
+                else cfg.train.epochs * iters
+            )
+            lr = get_lr(
+                global_micro, total_micro, t.learning_rate, warmup_steps=t.warmup_steps, min_ratio=t.lr_min_ratio
+            )
             for group in self.optimizer.param_groups:
                 group["lr"] = lr
 
@@ -231,8 +243,15 @@ class Trainer:
                 self.metrics.log(stats, global_micro)
                 logger.info(
                     "Epoch[%d/%d](%d/%d) loss=%.4f lr=%.2e grad_norm=%.2f tok/s=%.0f eta=%.1fmin",
-                    epoch + 1, t.epochs, offset + 1, iters, train_loss, lr,
-                    float(last_grad_norm), tokens_per_s, eta_min,
+                    epoch + 1,
+                    t.epochs,
+                    offset + 1,
+                    iters,
+                    train_loss,
+                    lr,
+                    float(last_grad_norm),
+                    tokens_per_s,
+                    eta_min,
                 )
 
             if t.eval_interval_steps > 0 and (offset + 1) % t.eval_interval_steps == 0:
@@ -256,8 +275,11 @@ class Trainer:
         if self.eval_ds is None or len(self.eval_ds) == 0:
             return None
         loader = DataLoader(
-            self.eval_ds, batch_size=self.cfg.train.batch_size, shuffle=False,
-            collate_fn=self.collate_fn, **_loader_extras(self.cfg.data.num_workers),
+            self.eval_ds,
+            batch_size=self.cfg.train.batch_size,
+            shuffle=False,
+            collate_fn=self.collate_fn,
+            **_loader_extras(self.cfg.data.num_workers),
         )
         self.model.eval()
         losses: list[float] = []
@@ -292,11 +314,22 @@ class Trainer:
             self.save_weights_fn(self.model, self._weight_path(suffix="_best"))
         save_checkpoint(
             checkpoint_path(self.ckpt_dir, self.save_weight, self.cfg.model.hidden_size, self.cfg.model.use_moe),
-            model=self.model, optimizer=self.optimizer, scaler=self.scaler,
-            epoch=epoch, step=step, config_snapshot=snapshot(self.cfg), best_val_loss=self.best_val_loss,
+            model=self.model,
+            optimizer=self.optimizer,
+            scaler=self.scaler,
+            epoch=epoch,
+            step=step,
+            config_snapshot=snapshot(self.cfg),
+            best_val_loss=self.best_val_loss,
         )
-        logger.info("已保存：%s%s（epoch=%d step=%d best_val=%s）",
-                    weight_path.name, " + best" if is_best else "", epoch + 1, step, self.best_val_loss)
+        logger.info(
+            "已保存：%s%s（epoch=%d step=%d best_val=%s）",
+            weight_path.name,
+            " + best" if is_best else "",
+            epoch + 1,
+            step,
+            self.best_val_loss,
+        )
 
     def _weight_path(self, suffix: str = "") -> Path:
         cfg = self.cfg
@@ -314,9 +347,13 @@ class Trainer:
             g = torch.Generator()
             g.manual_seed(cfg.train.seed + epoch)  # 采样器显式携带种子（training §1）
             inner = torch.randperm(len(self.train_ds), generator=g).tolist()
-        batch_sampler = SkipBatchSampler(inner, cfg.train.batch_size, self.start_step if epoch == self.start_epoch else 0)
+        batch_sampler = SkipBatchSampler(
+            inner, cfg.train.batch_size, self.start_step if epoch == self.start_epoch else 0
+        )
         loader = DataLoader(
-            self.train_ds, batch_sampler=batch_sampler, collate_fn=self.collate_fn,
+            self.train_ds,
+            batch_sampler=batch_sampler,
+            collate_fn=self.collate_fn,
             **_loader_extras(cfg.data.num_workers),
         )
         return loader, len(loader)
@@ -341,8 +378,6 @@ class Trainer:
         # 铁律 8：续训做成默认行为——checkpoint 在场即恢复
         ckpt = checkpoint_path(self.ckpt_dir, self.save_weight, cfg.model.hidden_size, cfg.model.use_moe)
         if t.resume and ckpt.exists():
-            from minimind_reborn.models.weights import unwrap_model
-
             data = load_checkpoint(ckpt, world_size=dist.get_world_size())
             self.raw_model.load_state_dict(data["model"], strict=True)
             self.optimizer.load_state_dict(data["optimizer"])
@@ -352,8 +387,11 @@ class Trainer:
             self.best_val_loss = data.get("best_val_loss")
             logger.info(
                 "续训恢复清单：epoch=%d step=%d best_val=%s optimizer=%s scaler=%s（恢复清单让加载错误第一步现形）",
-                self.start_epoch, self.start_step, self.best_val_loss,
-                list(data["optimizer"].keys())[:3], "ok",
+                self.start_epoch,
+                self.start_step,
+                self.best_val_loss,
+                list(data["optimizer"].keys())[:3],
+                "ok",
             )
 
 

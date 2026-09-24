@@ -1,4 +1,5 @@
 """Agent RL workflow（官方 train_agent.py 的架构化重构）：多轮工具调用 + 组相对策略优化。"""
+
 from __future__ import annotations
 
 import json
@@ -8,7 +9,6 @@ import re
 
 import torch
 import torch.nn.functional as F
-from torch import optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, DistributedSampler
 
@@ -17,10 +17,10 @@ from minimind_reborn.data.datasets import AgentRLDataset
 from minimind_reborn.data.registry import file_path, resolve_dataset
 from minimind_reborn.loggers import get_logger
 from minimind_reborn.models.weights import load_inference_weights, resolve_weight_path
+from minimind_reborn.training.agent.tools import CHECK_ARGS, TOOLS, execute_tool, parse_tool_calls
 from minimind_reborn.training.common.optim import configure_optimizers
 from minimind_reborn.training.common.rewards import rep_penalty
 from minimind_reborn.training.common.rl_utils import RLSession
-from minimind_reborn.training.agent.tools import CHECK_ARGS, TOOLS, execute_tool, parse_tool_calls
 from minimind_reborn.training.common.setup import build_model, load_tokenizer
 from minimind_reborn.training.rollout import create_rollout_engine
 from minimind_reborn.utils import dist
@@ -31,8 +31,7 @@ logger = get_logger("agent")
 
 def _validate_gt_in_text(text: str, gt_list) -> set:
     text_num = str(text).replace(",", "")
-    nums = [float(x) for x in
-            re.findall(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?![\w.])", text_num)]
+    nums = [float(x) for x in re.findall(r"(?<![\w.])[-+]?\d+(?:\.\d+)?(?![\w.])", text_num)]
     found = set()
     for g in gt_list:
         s = str(g).strip()
@@ -56,8 +55,7 @@ def _is_number(s: str) -> bool:
         return False
 
 
-def _rollout_single(rollout_engine, tokenizer, messages, tools, *, max_turns, max_new_tokens,
-                    thinking_ratio, device):
+def _rollout_single(rollout_engine, tokenizer, messages, tools, *, max_turns, max_new_tokens, thinking_ratio, device):
     """多轮采样：工具观测经模板 marker 对齐回 token 流（观测位 mask=0 不计梯度）。"""
     all_outputs = []
     prompt_ids = None
@@ -68,13 +66,19 @@ def _rollout_single(rollout_engine, tokenizer, messages, tools, *, max_turns, ma
     unfinished = False
     open_thinking = random.random() < thinking_ratio
     for turn in range(max_turns):
-        context = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
-                                                tools=tools, open_thinking=open_thinking)
+        context = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, tools=tools, open_thinking=open_thinking
+        )
         if prompt_ids is None:
             prompt_ids = tokenizer(context, add_special_tokens=False)["input_ids"]
         input_ids = torch.tensor([prompt_ids + response_ids], device=device)
-        result = rollout_engine.rollout(prompt_ids=input_ids, attention_mask=torch.ones_like(input_ids),
-                                        num_generations=1, max_new_tokens=max_new_tokens, temperature=0.8)
+        result = rollout_engine.rollout(
+            prompt_ids=input_ids,
+            attention_mask=torch.ones_like(input_ids),
+            num_generations=1,
+            max_new_tokens=max_new_tokens,
+            temperature=0.8,
+        )
         valid_len = int(result.completion_mask[0].sum().item())
         new_ids = result.completion_ids[0, :valid_len].tolist()
         new_logps = result.per_token_logps[0, :valid_len].tolist()
@@ -98,14 +102,16 @@ def _rollout_single(rollout_engine, tokenizer, messages, tools, *, max_turns, ma
                 except Exception:  # noqa: BLE001
                     raw = {}
             result_obj = execute_tool(name, raw)
-            result_str = (json.dumps(result_obj, ensure_ascii=False)
-                          if result_obj else '{"error": "tool not found"}')[:2048]
+            result_str = (json.dumps(result_obj, ensure_ascii=False) if result_obj else '{"error": "tool not found"}')[
+                :2048
+            ]
             messages.append({"role": "tool", "content": result_str})
         # 用 marker 找到观测段在模板中的增量 token（官方同款技巧）
         marker = f"<|agent_observation_{id(messages)}_{len(response_ids)}|>"
         assistant_message["content"] += marker
-        marked = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=not unfinished,
-                                               tools=tools, open_thinking=open_thinking)
+        marked = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=not unfinished, tools=tools, open_thinking=open_thinking
+        )
         assistant_message["content"] = new_text
         _, found, observation = marked.partition(marker)
         if not found:
@@ -116,10 +122,19 @@ def _rollout_single(rollout_engine, tokenizer, messages, tools, *, max_turns, ma
         response_ids.extend(obs_delta)
         response_mask.extend([0] * len(obs_delta))
         response_old_logps.extend([0.0] * len(obs_delta))
-        final_context = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=not unfinished,
-                                                      tools=tools, open_thinking=open_thinking)
-    return (all_outputs[-1] if all_outputs else "", final_context, prompt_ids or [],
-            response_ids, response_mask, response_old_logps, list(all_outputs), unfinished)
+        final_context = tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=not unfinished, tools=tools, open_thinking=open_thinking
+        )
+    return (
+        all_outputs[-1] if all_outputs else "",
+        final_context,
+        prompt_ids or [],
+        response_ids,
+        response_mask,
+        response_old_logps,
+        list(all_outputs),
+        unfinished,
+    )
 
 
 def _rewards(prompts, completions, gt_batch, tools_batch, num_gen, device, turn_outputs_batch, unfinished_batch):
@@ -161,7 +176,9 @@ def _rewards(prompts, completions, gt_batch, tools_batch, num_gen, device, turn_
                 valid_count += int(bool(name in valid_names and check and check(raw)))
             tool_gap = abs(valid_count - len(gt)) + max(0, len(tool_calls) - valid_count)
             reward += 0.5 if tool_gap == 0 else -0.5 * tool_gap
-            final_text = "" if unfinished else (answer.split("</tool_call>")[-1] if "</tool_call>" in answer else answer)
+            final_text = (
+                "" if unfinished else (answer.split("</tool_call>")[-1] if "</tool_call>" in answer else answer)
+            )
             verified = _validate_gt_in_text(final_text, gt) if gt else set()
             if gt:
                 reward += 2.5 * len(verified) / len(gt)
@@ -176,7 +193,6 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     session = RLSession(cfg, save_weight="agent", device=device, local_rank=local_rank)
     device = session.device
     tokenizer = load_tokenizer()
-    rl = cfg.rl
     t = cfg.train
 
     model = build_model(cfg, tokenizer)
@@ -188,7 +204,14 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     ref_model.eval().requires_grad_(False).to(device)
 
     dataset = AgentRLDataset(file_path(resolve_dataset(cfg.data.dataset)))
-    collate = lambda b: {"messages": [x["messages"] for x in b], "tools": [x["tools"] for x in b], "gt": [x["gt"] for x in b]}
+
+    def collate(b):
+        return {
+            "messages": [x["messages"] for x in b],
+            "tools": [x["tools"] for x in b],
+            "gt": [x["gt"] for x in b],
+        }
+
     sampler = DistributedSampler(dataset, shuffle=True) if dist.is_initialized() else None
     optimizer = configure_optimizers(model, t.learning_rate, t.weight_decay)
     iters = math.ceil(len(dataset) / t.batch_size / dist.get_world_size())
@@ -204,11 +227,17 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     for epoch in range(start_epoch, t.epochs):
         if sampler is not None:
             sampler.set_epoch(epoch)
-        loader = DataLoader(dataset, batch_size=t.batch_size, sampler=sampler,
-                            collate_fn=collate, **loader_kwargs(cfg.data.num_workers))
+        loader = DataLoader(
+            dataset,
+            batch_size=t.batch_size,
+            sampler=sampler,
+            collate_fn=collate,
+            **loader_kwargs(cfg.data.num_workers),
+        )
         for step, batch in enumerate(loader, start=start_step + 1):
-            stats, loss_val = _agent_step(cfg, session, model, ref_model, rollout_engine, tokenizer,
-                                          batch, optimizer, TOOLS)
+            stats, loss_val = _agent_step(
+                cfg, session, model, ref_model, rollout_engine, tokenizer, batch, optimizer, TOOLS
+            )
             if step % t.gradient_accumulation_steps == 0 or step == len(loader):
                 torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], t.grad_clip)
                 optimizer.step()
@@ -216,8 +245,14 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
                 optimizer.zero_grad(set_to_none=True)
             if step % t.log_interval == 0:
                 session.metrics.log(stats, epoch * iters + step)
-                logger.info("Epoch[%d/%d](%d/%d) %s", epoch + 1, t.epochs, step, len(loader),
-                            " ".join(f"{k}={v:.4f}" for k, v in stats.items()))
+                logger.info(
+                    "Epoch[%d/%d](%d/%d) %s",
+                    epoch + 1,
+                    t.epochs,
+                    step,
+                    len(loader),
+                    " ".join(f"{k}={v:.4f}" for k, v in stats.items()),
+                )
             if 0 < cfg.train.max_steps <= step:
                 logger.info("达到 max_steps=%d 截断（冒烟/调试预算）", cfg.train.max_steps)
                 session.save(model, optimizer, scheduler, epoch, step)
@@ -237,16 +272,22 @@ def _agent_step(cfg, session, model, ref_model, rollout_engine, tokenizer, batch
     rl = cfg.rl
     device = session.device
     messages_batch, tools_batch, gt_batch = batch["messages"], batch["tools"], batch["gt"]
-    import json as _json
     with torch.no_grad():
         packed = []
         completions, contexts, turn_outputs_batch, unfinished_batch = [], [], [], []
-        for messages, tools in zip(messages_batch, tools_batch):
+        for messages, tools in zip(messages_batch, tools_batch, strict=False):
             for _ in range(rl.num_generations):
                 msgs = [dict(m) for m in messages]
                 completion, context, prompt_ids, resp_ids, resp_mask, old_logps, turns, unfinished = _rollout_single(
-                    rollout_engine, tokenizer, msgs, tools, max_turns=rl.max_turns,
-                    max_new_tokens=rl.max_gen_len, thinking_ratio=rl.thinking_ratio, device=device)
+                    rollout_engine,
+                    tokenizer,
+                    msgs,
+                    tools,
+                    max_turns=rl.max_turns,
+                    max_new_tokens=rl.max_gen_len,
+                    thinking_ratio=rl.thinking_ratio,
+                    device=device,
+                )
                 completions.append(completion)
                 contexts.append(context)
                 turn_outputs_batch.append(turns)
@@ -256,23 +297,31 @@ def _agent_step(cfg, session, model, ref_model, rollout_engine, tokenizer, batch
                 olds = [0.0] * max(len(prompt_ids) - 1, 0) + old_logps
                 if len(ids) > rl.max_total_len:
                     # 注意右值先求值：必须用 max_total_len 显式截断，不能用 len(ids)（此时还是旧长度）
-                    ids = ids[-rl.max_total_len:]
-                    mask = mask[-rl.max_total_len:]
-                    olds = olds[-(rl.max_total_len - 1):]
+                    ids = ids[-rl.max_total_len :]
+                    mask = mask[-rl.max_total_len :]
+                    olds = olds[-(rl.max_total_len - 1) :]
                 prompt_len = next((i for i, v in enumerate(mask) if v == 1), len(mask))
                 packed.append((ids, mask, prompt_len, olds))
         seq_lens = torch.tensor([len(x[0]) for x in packed], device=device)
         max_len = int(seq_lens.max().item())
-        input_ids = torch.tensor([x[0] + [tokenizer.pad_token_id] * (max_len - len(x[0])) for x in packed], device=device)
-        prompt_lens = torch.tensor([x[2] for x in packed], device=device)
-        full_resp_masks = torch.tensor([x[1] + [0] * (max_len - len(x[1])) for x in packed], device=device, dtype=torch.float32)
-        old_logps = torch.tensor([x[3] + [0.0] * max((max_len - 1) - len(x[3]), 0) for x in packed], device=device, dtype=torch.float32)
+        input_ids = torch.tensor(
+            [x[0] + [tokenizer.pad_token_id] * (max_len - len(x[0])) for x in packed], device=device
+        )
+        full_resp_masks = torch.tensor(
+            [x[1] + [0] * (max_len - len(x[1])) for x in packed], device=device, dtype=torch.float32
+        )
+        old_logps = torch.tensor(
+            [x[3] + [0.0] * max((max_len - 1) - len(x[3]), 0) for x in packed], device=device, dtype=torch.float32
+        )
         full_mask = (torch.arange(max_len, device=device).unsqueeze(0) < seq_lens.unsqueeze(1)).long()
 
-    prompts = [tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True, tools=t)
-               for m, t in zip(messages_batch, tools_batch)]
-    rewards = _rewards(prompts, completions, gt_batch, tools_batch, rl.num_generations, device,
-                       turn_outputs_batch, unfinished_batch)
+    prompts = [
+        tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True, tools=t)
+        for m, t in zip(messages_batch, tools_batch, strict=False)
+    ]
+    rewards = _rewards(
+        prompts, completions, gt_batch, tools_batch, rl.num_generations, device, turn_outputs_batch, unfinished_batch
+    )
 
     with session.autocast_ctx:
         res = model(input_ids, attention_mask=full_mask)
@@ -307,10 +356,13 @@ def _agent_step(cfg, session, model, ref_model, rollout_engine, tokenizer, batch
         per_token_loss = -(clamped * advantages.unsqueeze(1) * per_token_logps - rl.beta * per_token_kl)
     else:
         clipped = torch.clamp(ratio, 1 - rl.epsilon, 1 + rl.epsilon)
-        per_token_loss = -(torch.min(ratio * advantages.unsqueeze(1), clipped * advantages.unsqueeze(1))
-                           - rl.beta * per_token_kl)
+        per_token_loss = -(
+            torch.min(ratio * advantages.unsqueeze(1), clipped * advantages.unsqueeze(1)) - rl.beta * per_token_kl
+        )
     if valid_rows.any():
-        policy_loss = ((per_token_loss * completion_mask).sum(dim=1)[valid_rows] / token_counts[valid_rows].clamp(min=1)).mean()
+        policy_loss = (
+            (per_token_loss * completion_mask).sum(dim=1)[valid_rows] / token_counts[valid_rows].clamp(min=1)
+        ).mean()
     else:
         policy_loss = per_token_loss.sum() * 0.0
     loss = (policy_loss + aux_loss) / cfg.train.gradient_accumulation_steps
@@ -318,7 +370,8 @@ def _agent_step(cfg, session, model, ref_model, rollout_engine, tokenizer, batch
 
     stats = {
         "train/reward": rewards.mean().item(),
-        "train/kl_ref": ((ref_per_token - per_token_logps) * completion_mask).sum().item() / max(token_counts.sum().item(), 1),
+        "train/kl_ref": ((ref_per_token - per_token_logps) * completion_mask).sum().item()
+        / max(token_counts.sum().item(), 1),
         "train/policy_loss": policy_loss.item(),
         "train/avg_response_len": token_counts.float().mean().item(),
         "train/adv_std": advantages.std().item(),

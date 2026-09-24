@@ -1,4 +1,5 @@
 """DPO workflow：策略模型 + 冻结参考模型，差异在 compute_loss。"""
+
 from __future__ import annotations
 
 import torch
@@ -20,7 +21,9 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0) -> Tr
 
     # 参考模型：与策略同权重、冻结、只前向——引用漂移的"锚"
     ref_model = build_model(cfg, tokenizer)
-    init = resolve_weight_path(cfg.train.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe)
+    init = resolve_weight_path(
+        cfg.train.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe
+    )
     load_inference_weights(ref_model, init, strict=True)
     ref_model.eval().requires_grad_(False).to(device or ("cuda" if torch.cuda.is_available() else "cpu"))
     load_inference_weights(model, init, strict=True)  # 策略模型同起点（Trainer 的 resume 在其后仍可接管）
@@ -42,8 +45,15 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0) -> Tr
         return loss, {"train/dpo_loss": loss_val.item(), "train/aux_loss": float(out.aux_loss)}
 
     trainer = Trainer(
-        cfg, model, tokenizer, train_ds, None,
-        compute_loss=compute_loss, save_weight="dpo", device=device, local_rank=local_rank,
+        cfg,
+        model,
+        tokenizer,
+        train_ds,
+        None,
+        compute_loss=compute_loss,
+        save_weight="dpo",
+        device=device,
+        local_rank=local_rank,
     )
     trainer.run()
     return trainer

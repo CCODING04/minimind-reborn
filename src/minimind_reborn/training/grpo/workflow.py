@@ -3,13 +3,13 @@
 组相对策略优化：同 prompt 采 num_generations 条回复，组内 z-score 归一化优势，
 策略更新带 KL 锚到参考模型；支持 cispo / grpo 两种 per-token 损失。
 """
+
 from __future__ import annotations
 
 import math
 
 import torch
 import torch.nn.functional as F
-from torch import optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, DistributedSampler
 
@@ -19,11 +19,10 @@ from minimind_reborn.data.registry import file_path, resolve_dataset
 from minimind_reborn.loggers import get_logger
 from minimind_reborn.models.weights import load_inference_weights, resolve_weight_path
 from minimind_reborn.training.common.optim import configure_optimizers
-from minimind_reborn.training.common.rewards import batch_rewards
 from minimind_reborn.training.common.reward_model import LMForRewardModel
+from minimind_reborn.training.common.rewards import batch_rewards
 from minimind_reborn.training.common.rl_utils import RLSession
 from minimind_reborn.training.common.setup import build_model, load_tokenizer
-from minimind_reborn.training.common.checkpoint import load_checkpoint
 from minimind_reborn.training.rollout import create_rollout_engine
 from minimind_reborn.utils import dist
 from minimind_reborn.utils.seed import loader_kwargs, set_seed
@@ -50,7 +49,8 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     reward_model = LMForRewardModel(rl.reward_model_path, device=device) if rl.reward_model_path else None
 
     dataset = RLAIFDataset(
-        file_path(resolve_dataset(cfg.data.dataset)), tokenizer,
+        file_path(resolve_dataset(cfg.data.dataset)),
+        tokenizer,
         thinking_ratio=rl.thinking_ratio,
     )
     if dist.is_initialized():
@@ -65,9 +65,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
 
     # DDP 包装在优化器之后；RoPE buffer 各 rank 一致无需广播
     if dist.is_initialized():
-        model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[local_rank], broadcast_buffers=False
-        )
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[local_rank], broadcast_buffers=False)
     rollout_engine = create_rollout_engine(cfg, model, tokenizer, device)
 
     set_seed(t.seed + dist.get_rank(), deterministic=t.deterministic)
@@ -77,8 +75,9 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
             sampler.set_epoch(epoch)
         loader = DataLoader(dataset, batch_size=t.batch_size, sampler=sampler, **loader_kwargs(cfg.data.num_workers))
         for step, batch in enumerate(loader, start=start_step + 1):
-            policy_loss_val, stats = _grpo_step(cfg, model, ref_model, rollout_engine, reward_model,
-                                                tokenizer, batch, optimizer, session)
+            policy_loss_val, stats = _grpo_step(
+                cfg, model, ref_model, rollout_engine, reward_model, tokenizer, batch, optimizer, session
+            )
             if step % t.gradient_accumulation_steps == 0 or step == len(loader):
                 torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], t.grad_clip)
                 optimizer.step()
@@ -87,9 +86,15 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
 
             if step % t.log_interval == 0:
                 session.metrics.log(stats, epoch * iters + step)
-                logger.info("Epoch[%d/%d](%d/%d) %s lr=%.2e", epoch + 1, t.epochs, step, len(loader),
-                            " ".join(f"{k}={v:.4f}" for k, v in stats.items()),
-                            optimizer.param_groups[0]["lr"])
+                logger.info(
+                    "Epoch[%d/%d](%d/%d) %s lr=%.2e",
+                    epoch + 1,
+                    t.epochs,
+                    step,
+                    len(loader),
+                    " ".join(f"{k}={v:.4f}" for k, v in stats.items()),
+                    optimizer.param_groups[0]["lr"],
+                )
 
             if 0 < cfg.train.max_steps <= step:
                 logger.info("达到 max_steps=%d 截断（冒烟/调试预算）", cfg.train.max_steps)
@@ -110,15 +115,24 @@ def _grpo_step(cfg, model, ref_model, rollout_engine, reward_model, tokenizer, b
     rl = cfg.rl
     device = session.device
     prompts = batch["prompt"]
-    enc = tokenizer(prompts, return_tensors="pt", padding=True, return_token_type_ids=False,
-                    padding_side="left", add_special_tokens=False).to(device)
+    enc = tokenizer(
+        prompts,
+        return_tensors="pt",
+        padding=True,
+        return_token_type_ids=False,
+        padding_side="left",
+        add_special_tokens=False,
+    ).to(device)
     if cfg.data.max_seq_len:
-        enc["input_ids"] = enc["input_ids"][:, -cfg.data.max_seq_len:]
-        enc["attention_mask"] = enc["attention_mask"][:, -cfg.data.max_seq_len:]
+        enc["input_ids"] = enc["input_ids"][:, -cfg.data.max_seq_len :]
+        enc["attention_mask"] = enc["attention_mask"][:, -cfg.data.max_seq_len :]
 
     result = rollout_engine.rollout(
-        prompt_ids=enc["input_ids"], attention_mask=enc["attention_mask"],
-        num_generations=rl.num_generations, max_new_tokens=rl.max_gen_len, temperature=0.8,
+        prompt_ids=enc["input_ids"],
+        attention_mask=enc["attention_mask"],
+        num_generations=rl.num_generations,
+        max_new_tokens=rl.max_gen_len,
+        temperature=0.8,
     )
     outputs = result.output_ids
     completion_ids = result.completion_ids
@@ -150,12 +164,18 @@ def _grpo_step(cfg, model, ref_model, rollout_engine, reward_model, tokenizer, b
         logp_pos = prompt_lens.unsqueeze(1) - 1 + torch.arange(completion_ids.shape[1], device=device).unsqueeze(0)
         per_token_logps = (
             F.log_softmax(res.logits[:, :-1, :], dim=-1)
-            .gather(2, outputs[:, 1:].unsqueeze(-1)).squeeze(-1).gather(1, logp_pos)
+            .gather(2, outputs[:, 1:].unsqueeze(-1))
+            .squeeze(-1)
+            .gather(1, logp_pos)
         )
     with torch.no_grad():
         ref_logps = (
-            F.log_softmax(ref_model(outputs, attention_mask=(outputs != tokenizer.pad_token_id).long()).logits[:, :-1, :], dim=-1)
-            .gather(2, outputs[:, 1:].unsqueeze(-1)).squeeze(-1).gather(1, logp_pos)
+            F.log_softmax(
+                ref_model(outputs, attention_mask=(outputs != tokenizer.pad_token_id).long()).logits[:, :-1, :], dim=-1
+            )
+            .gather(2, outputs[:, 1:].unsqueeze(-1))
+            .squeeze(-1)
+            .gather(1, logp_pos)
         )
 
     # per-token 损失：cispo（钳制比率系数）或 grpo（双面 clip）+ k3 KL 惩罚
@@ -167,8 +187,9 @@ def _grpo_step(cfg, model, ref_model, rollout_engine, reward_model, tokenizer, b
         per_token_loss = -(clamped * advantages.unsqueeze(1) * per_token_logps - rl.beta * per_token_kl)
     else:
         clipped = torch.clamp(ratio, 1 - rl.epsilon, 1 + rl.epsilon)
-        per_token_loss = -(torch.min(ratio * advantages.unsqueeze(1), clipped * advantages.unsqueeze(1))
-                           - rl.beta * per_token_kl)
+        per_token_loss = -(
+            torch.min(ratio * advantages.unsqueeze(1), clipped * advantages.unsqueeze(1)) - rl.beta * per_token_kl
+        )
     mask = completion_mask.float()
     policy_loss = ((per_token_loss * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)).mean()
     loss = (policy_loss + aux_loss) / cfg.train.gradient_accumulation_steps

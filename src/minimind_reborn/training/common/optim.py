@@ -1,4 +1,5 @@
 """优化器构造（training §3：decay 分组放构造处，不散在训练循环）。"""
+
 from __future__ import annotations
 
 import inspect

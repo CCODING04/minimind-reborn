@@ -5,6 +5,7 @@ SDPA 仅用于"无 cache 的训练/编码"路径——带 cache 的步进路径 
 相对位置偏移，SDPA 的 is_causal 语义不匹配，走显式 mask 分支（这与官方一致，
 但 mask 的构造加了注释：这个 off-by-one 是生成正确性的头号杀手）。
 """
+
 from __future__ import annotations
 
 import math
@@ -45,11 +46,11 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,                       # (b, seq, hidden)
+        x: torch.Tensor,  # (b, seq, hidden)
         position_embeddings: tuple[torch.Tensor, torch.Tensor],  # (cos, sin)，各 (seq, head_dim)
         cache: KVCache | None = None,
         layer_idx: int = 0,
-        cache_start: int = 0,                  # 本步写入 cache 的起始位置
+        cache_start: int = 0,  # 本步写入 cache 的起始位置
         attention_mask: torch.Tensor | None = None,  # (b, total_len)，1=有效 0=padding
     ) -> torch.Tensor:
         bsz, seq_len, _ = x.shape
@@ -68,8 +69,8 @@ class Attention(nn.Module):
         else:
             xk_full, xv_full = xk, xv
 
-        xq = xq.transpose(1, 2)                                        # (b, heads, seq, hd)
-        xk_full = repeat_kv(xk_full, self.n_rep).transpose(1, 2)       # (b, heads, total, hd)
+        xq = xq.transpose(1, 2)  # (b, heads, seq, hd)
+        xk_full = repeat_kv(xk_full, self.n_rep).transpose(1, 2)  # (b, heads, total, hd)
         xv_full = repeat_kv(xv_full, self.n_rep).transpose(1, 2)
 
         use_sdpa = (
@@ -88,7 +89,9 @@ class Attention(nn.Module):
                 # causal mask 只作用于"当前步的新位置块"——历史列全部可见。
                 # 切片 [:, :, :, -seq_len:] 保证步进（seq=1）与 prefill（seq>1）共用同一正确性论证：
                 # 新块内第 i 行允许看到块内前 i+1 个位置。
-                scores[:, :, :, -seq_len:] += torch.full((seq_len, seq_len), float("-inf"), device=scores.device).triu(1)
+                scores[:, :, :, -seq_len:] += torch.full((seq_len, seq_len), float("-inf"), device=scores.device).triu(
+                    1
+                )
             if attention_mask is not None:
                 # padding 位置加性 -1e9（0 mask → 抑制）；广播到 head 维
                 scores += (1.0 - attention_mask.unsqueeze(1).unsqueeze(2).to(scores.dtype)) * -1e9

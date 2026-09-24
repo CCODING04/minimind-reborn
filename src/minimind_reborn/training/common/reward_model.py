@@ -1,4 +1,5 @@
 """外部奖励模型封装（官方 LMForRewardModel 保留；仅 rl.reward_model_path 非空时加载）。"""
+
 from __future__ import annotations
 
 import torch

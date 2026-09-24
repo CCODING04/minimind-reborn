@@ -7,6 +7,7 @@
 - finetune 语义非严格加载，但缺失/形状不匹配的 key 逐条 warning——
   静默吞键是最危险的"成功"。
 """
+
 from __future__ import annotations
 
 import logging
@@ -50,9 +51,7 @@ def load_finetune_weights(model: torch.nn.Module, path: str | Path) -> None:
     """微调加载：非严格 + 缺失/形状不匹配逐 key warning（training §4 反"静默吞键"）。"""
     state_dict = torch.load(path, map_location="cpu", weights_only=True)
     model_state = model.state_dict()
-    shape_mismatch = [
-        k for k, v in state_dict.items() if k in model_state and model_state[k].shape != v.shape
-    ]
+    shape_mismatch = [k for k, v in state_dict.items() if k in model_state and model_state[k].shape != v.shape]
     filtered = {k: v for k, v in state_dict.items() if k not in shape_mismatch}
     missing, unexpected = model.load_state_dict(filtered, strict=False)
     _warn_key_diff(missing, unexpected, shape_mismatch)
