@@ -33,7 +33,11 @@ uv run torchrun --nproc-per-node 2 tools/train.py configs/dpo_26m.yaml     # ini
 uv run python tools/chat.py --weight full_sft
 uv run python tools/eval_llm.py --weight dpo   # 自动评测 + 吞吐
 
-# 4) 服务（OpenAI 风格）
+# 4) Web 试验台（对话测试 / 三阶段对比 / 训练曲线与日志观测）
+uv sync --extra serving
+uv run python tools/webui.py --port 8899      # 浏览器打开 http://127.0.0.1:8899
+
+# 5) 服务（OpenAI 风格）
 uv sync --extra serving
 uv run python tools/serve.py --weight dpo --port 8998
 ```

@@ -62,12 +62,14 @@ def create_app(device: str | None = None, dtype: str = "bf16"):
     except ImportError as e:
         raise SystemExit(f"缺少服务依赖（{e}）。请安装：uv sync --extra serving") from None
 
-    from minimind_reborn import envs
     from transformers import AutoTokenizer
+
+    from minimind_reborn import envs
+    from minimind_reborn.utils.io import read_json
 
     app = FastAPI(title="minimind_reborn 试验台", version="phase1")
     pool = EnginePool(device=device, dtype=dtype)
-    tokenizer = AutoTokenizer.from_pretrained(envs.tokenizer_path())
+    AutoTokenizer.from_pretrained(envs.tokenizer_path())  # 预热 tokenizer 缓存；QueueStreamer 内部各自加载
 
     class GenParams(BaseModel):
         temperature: float = 0.7
@@ -91,6 +93,10 @@ def create_app(device: str | None = None, dtype: str = "bf16"):
     async def index():
         return FileResponse(_ASSETS / "index.html")
 
+    @app.get("/echarts.min.js")
+    async def echarts_js():
+        return FileResponse(_ASSETS / "echarts.min.js", media_type="application/javascript")
+
     @app.get("/api/models")
     async def list_models():
         return [
@@ -109,6 +115,67 @@ def create_app(device: str | None = None, dtype: str = "bf16"):
     @app.get("/api/health")
     async def health():
         return {"status": "ok", "loaded": pool.current_id}
+
+    # ============ Phase 2：训练观测（F3/F4，只读 runs/ 产物） ============
+    @app.get("/api/runs")
+    async def list_runs():
+        """运行注册表：runs/recipe/ts 三层目录的元信息清单。"""
+        runs = []
+        for cfg_path in sorted((envs.run_root()).glob("*/*/config.json")):
+            try:
+                snap = read_json(cfg_path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            run_dir = cfg_path.parent
+            best_val = None
+            metrics_file = run_dir / "metrics.jsonl"
+            if metrics_file.exists():
+                for line in metrics_file.open(encoding="utf-8"):
+                    d = json.loads(line)
+                    if d.get("key") == "val/loss":
+                        best_val = d["value"] if best_val is None else min(best_val, d["value"])
+            runs.append(
+                {
+                    "run_id": f"{cfg_path.parent.parent.name}/{run_dir.name}",
+                    "recipe_name": cfg_path.parent.parent.name,
+                    "trained_at": run_dir.name,
+                    "stage": snap.get("stage"),
+                    "best_val_loss": best_val,
+                    "has_metrics": metrics_file.exists(),
+                    "has_log": (run_dir / "train.log").exists(),
+                }
+            )
+        return sorted(runs, key=lambda r: r["trained_at"], reverse=True)
+
+    @app.get("/api/runs/{recipe}/{trained_at}/metrics")
+    async def run_metrics(recipe: str, trained_at: str):
+        """metrics.jsonl → 按 key 分组的时间序列（供 ECharts 折线）。"""
+        path = envs.run_root() / recipe / trained_at / "metrics.jsonl"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"metrics.jsonl 不存在：{recipe}/{trained_at}")
+        series: dict[str, list[list[float]]] = {}
+        for line in path.open(encoding="utf-8"):
+            d = json.loads(line)
+            if d["value"] != d["value"]:  # 过滤 NaN
+                continue
+            series.setdefault(d["key"], []).append([d["step"], round(d["value"], 6)])
+        return {"run_id": f"{recipe}/{trained_at}", "series": [{"key": k, "points": p} for k, p in series.items()]}
+
+    @app.get("/api/runs/{recipe}/{trained_at}/log")
+    async def run_log(recipe: str, trained_at: str, tail: int = 200):
+        path = envs.run_root() / recipe / trained_at / "train.log"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"train.log 不存在：{recipe}/{trained_at}")
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return {"run_id": f"{recipe}/{trained_at}", "total": len(lines), "lines": lines[-max(tail, 1) :]}
+
+    @app.get("/api/runs/{recipe}/{trained_at}/meta")
+    async def run_meta(recipe: str, trained_at: str):
+        """配置快照 + 环境指纹摘要（可追溯四件套的另外两件）。"""
+        run_dir = envs.run_root() / recipe / trained_at
+        cfg = read_json(run_dir / "config.json") if (run_dir / "config.json").exists() else None
+        env = read_json(run_dir / "env.json") if (run_dir / "env.json").exists() else None
+        return {"run_id": f"{recipe}/{trained_at}", "config": cfg, "env": env}
 
     def _stream_one(
         entry: ModelEntry,

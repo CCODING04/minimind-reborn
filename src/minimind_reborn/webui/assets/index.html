@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>minimind_reborn 试验台</title>
+<script src="/echarts.min.js"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f6f8fa; --border: #d1d9e0; --fg: #1f2328; --muted: #59636e;
@@ -70,6 +71,34 @@
                  font: inherit; font-size: 12.5px; color: var(--muted); cursor: pointer; }
   #status { font-size: 12px; color: var(--muted); padding: 4px 18px 8px; min-height: 20px; }
   .thinking { color: var(--muted); }
+  /* ===== 标签页 ===== */
+  .tabs { display: flex; gap: 2px; padding: 10px 18px 0; background: var(--bg2); border-bottom: 1px solid var(--border); }
+  .tab { padding: 7px 18px; border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0;
+         background: #eaeef2; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; }
+  .tab.active { background: var(--bg); color: var(--fg); }
+  .tabpane { display: none; flex: 1; overflow: hidden; }
+  .tabpane.active { display: flex; }
+  /* ===== 训练观测 ===== */
+  #train-side { width: 300px; min-width: 300px; border-right: 1px solid var(--border); background: var(--bg2);
+                overflow-y: auto; padding-bottom: 12px; }
+  .run-item { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
+  .run-item:hover { background: #eaeef2; }
+  .run-item .desc { color: var(--muted); font-size: 11.5px; }
+  #train-main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; padding: 12px; gap: 10px; }
+  #keys-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+  .key-chip { font-size: 11.5px; border: 1px solid var(--border); border-radius: 10px; padding: 1px 10px; cursor: pointer; user-select: none; }
+  .key-chip.on { background: var(--link); color: #fff; border-color: var(--link); }
+  #chart { flex: 1; min-height: 260px; border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  #train-bottom { display: flex; gap: 10px; height: 34%; min-height: 180px; }
+  #log-panel { flex: 1.4; border: 1px solid var(--border); border-radius: 8px; background: #0d1117; color: #c9d1d9;
+               font: 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+               overflow: auto; padding: 10px; white-space: pre-wrap; }
+  #meta-panel { flex: 1; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2);
+                overflow: auto; padding: 10px; font-size: 12px; }
+  #meta-panel table { width: 100%; border-collapse: collapse; }
+  #meta-panel td { border-bottom: 1px solid var(--border); padding: 2px 4px; vertical-align: top; }
+  #meta-panel td:first-child { color: var(--muted); white-space: nowrap; }
+  .toolbar { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -88,6 +117,12 @@
 </aside>
 
 <main>
+  <div class="tabs">
+    <div class="tab active" data-pane="infer">推理对比</div>
+    <div class="tab" data-pane="train">训练观测</div>
+  </div>
+
+  <div class="tabpane active" id="pane-infer">
   <div id="columns">
     <div class="empty" id="empty-hint">
       <div>← 在左侧勾选模型开始</div>
@@ -102,6 +137,26 @@
       <div>
         <button class="ghost" id="btn-clear">清空对话</button>
         <button class="primary" id="btn-send">发送</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="tabpane" id="pane-train">
+    <div id="train-side">
+      <div class="sec-title">训练运行（勾选叠加曲线）</div>
+      <div class="model-list" id="runs">加载中…</div>
+    </div>
+    <div id="train-main">
+      <div class="toolbar">
+        <span>指标 key：</span>
+        <div id="keys-bar"></div>
+        <button class="ghost" id="btn-refresh-log">刷新日志</button>
+      </div>
+      <div id="chart"></div>
+      <div id="train-bottom">
+        <div id="log-panel">选择一个 run 查看日志尾部…</div>
+        <div id="meta-panel">选择一个 run 查看配置与环境指纹…</div>
       </div>
     </div>
   </div>
@@ -276,6 +331,97 @@ $("btn-clear").onclick = () => { history = []; for (const mid of selected) body(
 $("prompt").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
 });
+// ===== 标签页 =====
+document.querySelectorAll(".tab").forEach((t) => {
+  t.onclick = () => {
+    document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
+    document.querySelectorAll(".tabpane").forEach((p) => p.classList.toggle("active", p.id === "pane-" + t.dataset.pane));
+    if (t.dataset.pane === "train") { loadRuns(); if (window.__chart) window.__chart.resize(); }
+  };
+});
+
+// ===== 训练观测（F3/F4）=====
+let trainRuns = [];        // 勾选的 run_id 列表（最多 4 条叠加）
+let keyFilter = new Set(["train/loss", "val/loss"]);
+let selectedKeySet = [];
+let chart = null;
+
+async function loadRuns() {
+  const runs = await (await fetch("/api/runs")).json();
+  $("runs").innerHTML = runs.map((r) => `
+    <label class="run-item">
+      <input type="checkbox" value="${r.run_id}" onchange="onPickRun(this)">
+      <span class="meta">
+        <span class="name">${r.recipe_name}</span> <span class="badge">${r.stage || "?"}</span>
+        <div class="desc">${r.trained_at}${r.best_val_loss != null ? " · best_val " + r.best_val_loss.toFixed(3) : ""}</div>
+      </span>
+    </label>`).join("") || "runs/ 下暂无训练记录";
+}
+async function onPickRun(box) {
+  if (box.checked) {
+    if (trainRuns.length >= 4) { box.checked = false; $("status").textContent = "最多叠加 4 个 run"; return; }
+    trainRuns.push(box.value);
+  } else trainRuns = trainRuns.filter((v) => v !== box.value);
+  await renderCurves();
+  if (trainRuns.length) await loadTrainPanels(trainRuns[0]);
+}
+
+async function renderCurves() {
+  if (typeof echarts === "undefined") {
+    $("chart").innerHTML = '<div class="empty">echarts 未能加载，曲线不可用（日志与元信息不受影响）</div>';
+    return;
+  }
+  const allSeries = [];
+  const keySet = new Set();
+  for (const runId of trainRuns) {
+    const [recipe, ts] = runId.split("/");
+    const data = await (await fetch(`/api/runs/${recipe}/${ts}/metrics`)).json();
+    for (const s of data.series) {
+      keySet.add(s.key);
+      if (keyFilter.has(s.key)) allSeries.push({ name: `${s.key} · ${runId}`, data: s.points });
+    }
+  }
+  renderKeyChips([...keySet].sort());
+  window.__chart = window.__chart || echarts.init($("chart"));
+  window.__chart.setOption({
+    grid: { left: 60, right: 20, top: 30, bottom: 50 },
+    tooltip: { trigger: "axis" },
+    legend: { type: "scroll", top: 0, textStyle: { fontSize: 11 } },
+    xAxis: { type: "value", name: "optimizer step", axisLabel: { fontSize: 10 } },
+    yAxis: { type: "value", axisLabel: { fontSize: 10 } },
+    dataZoom: [{ type: "inside" }, { type: "slider", height: 16, bottom: 8 }],
+    series: allSeries.map((s) => ({ ...s, type: "line", showSymbol: false, lineStyle: { width: 1.4 }, emphasis: { focus: "series" } })),
+  }, true);
+}
+function renderKeyChips(keys) {
+  selectedKeySet = keys;
+  $("keys-bar").innerHTML = keys.map((k) =>
+    `<span class="key-chip ${keyFilter.has(k) ? "on" : ""}" onclick="toggleKey('${k}')">${k}</span>`).join("");
+}
+function toggleKey(k) {
+  keyFilter.has(k) ? keyFilter.delete(k) : keyFilter.add(k);
+  renderCurves();
+}
+
+async function loadTrainPanels(runId) {
+  const [recipe, ts] = runId.split("/");
+  const log = await (await fetch(`/api/runs/${recipe}/${ts}/log?tail=120`)).json();
+  $("log-panel").textContent = `[${runId}] train.log 尾部 ${log.lines.length}/${log.total} 行\n` + log.lines.join("\n");
+  $("log-panel").scrollTop = $("log-panel").scrollHeight;
+  const meta = await (await fetch(`/api/runs/${recipe}/${ts}/meta`)).json();
+  const rows = [];
+  if (meta.env) for (const k of ["hostname", "torch", "cuda_runtime", "gpu", "gpu_count", "seed", "commit"]) {
+    if (meta.env[k] !== undefined) rows.push([k, JSON.stringify(meta.env[k])]);
+  }
+  if (meta.config) {
+    rows.push(["stage", meta.config.stage], ["recipe", meta.config.recipe_name]);
+    for (const [k, v] of Object.entries(meta.config.train || {})) rows.push(["train." + k, JSON.stringify(v)]);
+    for (const [k, v] of Object.entries(meta.config.data || {})) rows.push(["data." + k, JSON.stringify(v)]);
+  }
+  $("meta-panel").innerHTML = `<table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${String(v).slice(0, 90)}</td></tr>`).join("")}</table>`;
+}
+$("btn-refresh-log").onclick = () => { if (trainRuns.length) loadTrainPanels(trainRuns[0]); };
+
 renderParams();
 loadModels();
 </script>
