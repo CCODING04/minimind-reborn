@@ -8,6 +8,7 @@ dependencies = [
     # 核心依赖准入：没有它们 import 主包即失败。版本夹逼，排除已知坏版本。
     "torch>=2.14,<3",
     "transformers>=5.16,<6",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
