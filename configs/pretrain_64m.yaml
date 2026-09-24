@@ -1,4 +1,4 @@
-# 26M dense 预训练配方（hidden 768 × 8 层，与官方 minimind 26M 对齐）
+# 64M dense 预训练配方（hidden 768×8，与官方 minimind-3 同构）
 # 默认值全部在 src/minimind_reborn/configuration/schemas.py，本文件只写差异
 stage: pretrain
 data:

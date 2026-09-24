@@ -1,4 +1,4 @@
-# 26M DPO 偏好对齐（基于 SFT 权重）
+# 64M DPO 偏好对齐（基于 SFT 权重）
 stage: dpo
 data:
   dataset: dpo_mini

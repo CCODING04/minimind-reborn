@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 
 import torch
@@ -195,6 +196,9 @@ class Trainer:
         start_step = self.start_step if epoch == self.start_epoch else 0
         if start_step > 0:
             logger.info("Epoch %d：跳过前 %d 个 micro step 续训", epoch + 1, start_step)
+        # 完整 epoch 步数（不扣 skip）：全局步数记账/LR 调度的分母必须用它。
+        # iters 是"本次实际迭代数"（续训时 = 完整步数 - start_step），只用于循环结束判定。
+        full_iters = (len(self.train_ds) + t.batch_size - 1) // t.batch_size
 
         self.model.train()
         window_start = time.time()  # 吞吐窗口（每次日志重置）
@@ -205,11 +209,11 @@ class Trainer:
         last_grad_norm = 0.0
 
         for offset, batch in enumerate(loader, start=start_step):
-            global_micro = epoch * iters + offset
+            global_micro = epoch * full_iters + offset
             total_micro = (
-                min(cfg.train.epochs * iters, cfg.train.max_steps)
+                min(cfg.train.epochs * full_iters, cfg.train.max_steps)
                 if cfg.train.max_steps > 0
-                else cfg.train.epochs * iters
+                else cfg.train.epochs * full_iters
             )
             lr = get_lr(
                 global_micro, total_micro, t.learning_rate, warmup_steps=t.warmup_steps, min_ratio=t.lr_min_ratio
@@ -218,14 +222,21 @@ class Trainer:
                 group["lr"] = lr
 
             batch = _to_device(batch, self.device)
-            is_last = offset == iters - 1
-            with self.autocast_ctx:
-                loss, log_metrics = self.compute_loss(batch, self.model)
-            scaled = loss / t.gradient_accumulation_steps
-            self.scaler.scale(scaled).backward()
+            is_last = offset == start_step + iters - 1  # 续训时按实际迭代终点判定（而非 full_iters-1）
+            is_sync_step = (offset + 1) % t.gradient_accumulation_steps == 0 or is_last
+            # DDP 梯度累积：仅最后一个 micro step 同步梯度（training §3），其余步 no_sync
+            # 省掉 (accum-1)/accum 的 allreduce——64M×2B×8 步在 PCIe PHB 上实测拖累 scaling 至 67.6%
+            no_sync = getattr(self.model, "no_sync", None)  # 仅 DDP 包装有此方法
+            sync_ctx = nullcontext() if (no_sync is None or is_sync_step) else no_sync()
+
+            with sync_ctx:  # 注意：sync_ctx 已是上下文实例，不能再加调用括号
+                with self.autocast_ctx:
+                    loss, log_metrics = self.compute_loss(batch, self.model)
+                scaled = loss / t.gradient_accumulation_steps
+                self.scaler.scale(scaled).backward()
 
             # 优化步门：末个 micro step 或累积满 → unscale_ 后裁剪（阈值语义才正确）→ step
-            if (offset + 1) % t.gradient_accumulation_steps == 0 or is_last:
+            if is_sync_step:
                 self.scaler.unscale_(self.optimizer)
                 params = [p for p in self.model.parameters() if p.requires_grad]
                 last_grad_norm = torch.nn.utils.clip_grad_norm_(params, t.grad_clip)
@@ -263,7 +274,7 @@ class Trainer:
                     epoch + 1,
                     t.epochs,
                     offset + 1,
-                    iters,
+                    full_iters,
                     train_loss,
                     lr,
                     float(last_grad_norm),

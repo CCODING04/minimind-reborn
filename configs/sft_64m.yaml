@@ -1,4 +1,4 @@
-# 26M 全参数 SFT（基于 pretrain 权重）
+# 64M 全参数 SFT（基于 pretrain 权重）
 stage: sft
 data:
   dataset: sft_t2t_mini
