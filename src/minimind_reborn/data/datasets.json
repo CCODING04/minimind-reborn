@@ -23,5 +23,15 @@
     "file": "agent_rl.jsonl",
     "kind": "agent",
     "description": "Agent RL 轨迹（conversations + tools + gt 真值）"
+  },
+  "pretrain_t2t": {
+    "file": "pretrain_t2t.jsonl",
+    "kind": "pretrain",
+    "description": "预训练语料全量版（~10GB）"
+  },
+  "sft_t2t": {
+    "file": "sft_t2t.jsonl",
+    "kind": "sft",
+    "description": "SFT 对话语料全量版（~14GB）"
   }
 }

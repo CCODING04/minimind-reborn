@@ -1,0 +1,19 @@
+# 64M DPO（dpo.jsonl 即全量 53MB）
+stage: dpo
+data:
+  dataset: dpo_mini
+  max_seq_len: 1024
+  num_workers: 8
+train:
+  epochs: 1
+  batch_size: 4
+  gradient_accumulation_steps: 1
+  learning_rate: 4.0e-8
+  dtype: bf16
+  init_from: full_sft
+  save_interval_steps: 500
+  log_interval: 50
+metrics:
+  backends: ["tensorboard"]
+dpo:
+  beta: 0.15
