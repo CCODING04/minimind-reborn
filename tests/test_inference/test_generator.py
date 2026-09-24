@@ -97,3 +97,18 @@ def test_generation_deterministic_with_seed(tiny_model):
             )["sequences"]
         )
     assert torch.equal(outs[0], outs[1])
+
+
+def test_generation_cancelled_midway(tiny_model):
+    """cancel 回调：中止生成，已生成部分保留且 finish_reason 如实标记。"""
+    steps = {"n": 0}
+
+    def cancel_after_5():
+        steps["n"] += 1
+        return steps["n"] > 5
+
+    prompt = torch.randint(0, 64, (1, 4))
+    out = generate(tiny_model, prompt, GenerateConfig(temperature=0.0, max_new_tokens=64),
+                   eos_token_id=None, pad_token_id=0, cancel=cancel_after_5)
+    assert out["generated_ids"].shape[1] == 5  # 第 6 步前中止
+    assert out["finish_reasons"] == ["cancelled"]

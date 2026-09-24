@@ -110,6 +110,7 @@ class MiniMindLLM:
         attention_mask: torch.Tensor | None = None,
         max_new_tokens: int | None = None,
         streamer=None,
+        cancel=None,
     ) -> GenerationOutput:
         input_ids = input_ids.to(self.device)
         if attention_mask is not None:
@@ -123,6 +124,7 @@ class MiniMindLLM:
             max_new_tokens=max_new_tokens,
             attention_mask=attention_mask,
             streamer=streamer,
+            cancel=cancel,
         )
 
     # ---------- 文本层（messages in / 结构化 dict out，带 request 追溯） ----------

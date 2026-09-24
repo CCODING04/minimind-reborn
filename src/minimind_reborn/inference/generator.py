@@ -38,6 +38,7 @@ def generate(
     attention_mask: torch.Tensor | None = None,
     streamer=None,
     generator: torch.Generator | None = None,
+    cancel=None,  # Callable[[], bool]：每步开始前检查，返回 True 中止生成（finish_reason="cancelled"）
 ) -> GenerationOutput:
     """自回归生成主循环：预分配 KV cache + 原地切片 + 停止三重。
 
@@ -67,6 +68,10 @@ def generate(
         streamer.put(input_ids.cpu())
 
     for _ in range(steps):
+        if cancel is not None and cancel():
+            # 服务端停止（UI 中断/客户端断连）：已生成部分保留，停止原因如实标记
+            finish_reasons = ["cancelled"] * batch
+            break
         # 步进：只喂新增 token（第一步喂整段 prompt，cache 里写 prefill）
         past_len = cache.cur_len
         feed = input_ids if past_len == 0 else input_ids[:, past_len:]
