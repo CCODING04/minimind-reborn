@@ -182,11 +182,12 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     model = build_model(cfg, tokenizer)
     init = resolve_weight_path(t.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe)
     load_inference_weights(model, init, strict=True)
+    model = model.to(device)  # RL 循环不经 Trainer，设备搬运自己负责
     ref_model = build_model(cfg, tokenizer)
     load_inference_weights(ref_model, init, strict=True)
     ref_model.eval().requires_grad_(False).to(device)
 
-    dataset = AgentRLDataset(file_path(resolve_dataset(cfg.data.dataset)), tokenizer)
+    dataset = AgentRLDataset(file_path(resolve_dataset(cfg.data.dataset)))
     collate = lambda b: {"messages": [x["messages"] for x in b], "tools": [x["tools"] for x in b], "gt": [x["gt"] for x in b]}
     sampler = DistributedSampler(dataset, shuffle=True) if dist.is_initialized() else None
     optimizer = configure_optimizers(model, t.learning_rate, t.weight_decay)
@@ -204,7 +205,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
         if sampler is not None:
             sampler.set_epoch(epoch)
         loader = DataLoader(dataset, batch_size=t.batch_size, sampler=sampler,
-                            collate_fn=collate, **loader_kwargs(t.num_workers))
+                            collate_fn=collate, **loader_kwargs(cfg.data.num_workers))
         for step, batch in enumerate(loader, start=start_step + 1):
             stats, loss_val = _agent_step(cfg, session, model, ref_model, rollout_engine, tokenizer,
                                           batch, optimizer, TOOLS)
@@ -217,6 +218,12 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
                 session.metrics.log(stats, epoch * iters + step)
                 logger.info("Epoch[%d/%d](%d/%d) %s", epoch + 1, t.epochs, step, len(loader),
                             " ".join(f"{k}={v:.4f}" for k, v in stats.items()))
+            if 0 < cfg.train.max_steps <= step:
+                logger.info("达到 max_steps=%d 截断（冒烟/调试预算）", cfg.train.max_steps)
+                session.save(model, optimizer, scheduler, epoch, step)
+                rollout_engine.update_policy(model)
+                session.close()
+                return model
             if step % t.save_interval_steps == 0 or step == len(loader):
                 session.save(model, optimizer, scheduler, epoch, step, extra_states={"scheduler": scheduler})
                 rollout_engine.update_policy(model)
@@ -248,7 +255,10 @@ def _agent_step(cfg, session, model, ref_model, rollout_engine, tokenizer, batch
                 ids = prompt_ids + resp_ids
                 olds = [0.0] * max(len(prompt_ids) - 1, 0) + old_logps
                 if len(ids) > rl.max_total_len:
-                    ids, mask, olds = ids[-rl.max_total_len:], mask[-rl.max_total_len:], olds[-(len(ids) - 1):]
+                    # 注意右值先求值：必须用 max_total_len 显式截断，不能用 len(ids)（此时还是旧长度）
+                    ids = ids[-rl.max_total_len:]
+                    mask = mask[-rl.max_total_len:]
+                    olds = olds[-(rl.max_total_len - 1):]
                 prompt_len = next((i for i, v in enumerate(mask) if v == 1), len(mask))
                 packed.append((ids, mask, prompt_len, olds))
         seq_lens = torch.tensor([len(x[0]) for x in packed], device=device)
@@ -256,7 +266,7 @@ def _agent_step(cfg, session, model, ref_model, rollout_engine, tokenizer, batch
         input_ids = torch.tensor([x[0] + [tokenizer.pad_token_id] * (max_len - len(x[0])) for x in packed], device=device)
         prompt_lens = torch.tensor([x[2] for x in packed], device=device)
         full_resp_masks = torch.tensor([x[1] + [0] * (max_len - len(x[1])) for x in packed], device=device, dtype=torch.float32)
-        old_logps = torch.tensor([x[3] + [0.0] * ((max_len - 1) - len(x[3])) for x in packed], device=device, dtype=torch.float32)
+        old_logps = torch.tensor([x[3] + [0.0] * max((max_len - 1) - len(x[3]), 0) for x in packed], device=device, dtype=torch.float32)
         full_mask = (torch.arange(max_len, device=device).unsqueeze(0) < seq_lens.unsqueeze(1)).long()
 
     prompts = [tokenizer.apply_chat_template(m, tokenize=False, add_generation_prompt=True, tools=t)

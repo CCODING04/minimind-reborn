@@ -25,6 +25,10 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0) -> Tr
     teacher_cfg = MiniMindConfig(
         hidden_size=dc.teacher_hidden_size, num_hidden_layers=dc.teacher_num_layers,
         use_moe=dc.teacher_use_moe, vocab_size=cfg.model.vocab_size,
+        # attention 拓扑跟随 student 配置（teacher 只在 hidden/layers/MoE 上与学生不同）
+        num_attention_heads=cfg.model.num_attention_heads,
+        num_key_value_heads=cfg.model.num_key_value_heads,
+        head_dim=cfg.model.head_dim,
     )
     teacher = MiniMindForCausalLM(teacher_cfg)
     teacher_path = resolve_weight_path(dc.teacher_weight, cfg.output_dir, dc.teacher_hidden_size, dc.teacher_use_moe)

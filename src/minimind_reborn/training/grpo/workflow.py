@@ -41,6 +41,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
 
     init = resolve_weight_path(t.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe)
     load_inference_weights(model, init, strict=True)
+    model = model.to(device)  # RL 循环不经 Trainer，设备搬运自己负责
 
     ref_model = build_model(cfg, tokenizer)
     load_inference_weights(ref_model, init, strict=True)
@@ -74,7 +75,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     for epoch in range(start_epoch, t.epochs):
         if sampler is not None:
             sampler.set_epoch(epoch)
-        loader = DataLoader(dataset, batch_size=t.batch_size, sampler=sampler, **loader_kwargs(t.num_workers))
+        loader = DataLoader(dataset, batch_size=t.batch_size, sampler=sampler, **loader_kwargs(cfg.data.num_workers))
         for step, batch in enumerate(loader, start=start_step + 1):
             policy_loss_val, stats = _grpo_step(cfg, model, ref_model, rollout_engine, reward_model,
                                                 tokenizer, batch, optimizer, session)
@@ -90,6 +91,12 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
                             " ".join(f"{k}={v:.4f}" for k, v in stats.items()),
                             optimizer.param_groups[0]["lr"])
 
+            if 0 < cfg.train.max_steps <= step:
+                logger.info("达到 max_steps=%d 截断（冒烟/调试预算）", cfg.train.max_steps)
+                session.save(model, optimizer, scheduler, epoch, step)
+                rollout_engine.update_policy(model)
+                session.close()
+                return model
             if step % t.save_interval_steps == 0 or step == len(loader):
                 session.save(model, optimizer, scheduler, epoch, step, extra_states={"scheduler": scheduler})
                 rollout_engine.update_policy(model)

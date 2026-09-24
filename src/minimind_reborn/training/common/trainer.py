@@ -210,7 +210,9 @@ class Trainer:
                 self.optimizer_steps += 1
 
             running_loss += loss.item()
-            window_tokens += int(batch["input_ids"].shape[0]) * dist.get_world_size() * cfg.data.max_seq_len
+            # 范式 batch 结构不同（pretrain 有 input_ids，DPO 是 x/y/mask）——取首个 tensor 的 batch 维
+            first_tensor = next(v for v in batch.values() if isinstance(v, torch.Tensor))
+            window_tokens += int(first_tensor.shape[0]) * dist.get_world_size() * cfg.data.max_seq_len
 
             if (offset + 1) % t.log_interval == 0 or is_last:
                 elapsed = time.time() - window_start
@@ -267,10 +269,15 @@ class Trainer:
                 loss, _ = self.compute_loss(batch, self.model)
             losses.append(loss.item())
         self.model.train()  # 成对切回，训练态不被评估污染
-        mean = sum(losses) / max(len(losses), 1)
+        # 全 ignore（如 SFT 尾段全是 pad）时 cross_entropy 产生 NaN——过滤而非污染曲线
+        finite = [v for v in losses if torch.isfinite(torch.tensor(v))]
+        if not finite:
+            logger.warning("评估 batch 全部为非有限 loss（验证段全是 ignore token？），本次评估跳过")
+            return None
+        mean = sum(finite) / len(finite)
         mean = dist.all_reduce_mean(mean, device=self.device)  # 多卡指标聚合，防各卡统计漂移
         self.metrics.log({"val/loss": mean}, self.optimizer_steps)
-        logger.info("评估：val/loss=%.4f（固定 %d batch）", mean, len(losses))
+        logger.info("评估：val/loss=%.4f（固定 %d batch）", mean, len(finite))
         return mean
 
     # ============ 保存（rank0 独占 + best 另存 + 原子写） ============

@@ -1,6 +1,7 @@
 stage: distill
 data: {dataset: sft_t2t_mini, max_seq_len: 192, eval_ratio: 0.001, eval_iters: 2, num_workers: 2}
 train:
+  gradient_accumulation_steps: 1
   max_steps: 4
   batch_size: 2
   log_interval: 1

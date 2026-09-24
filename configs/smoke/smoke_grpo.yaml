@@ -1,6 +1,7 @@
 stage: grpo
 data: {dataset: rlaif_mini, max_seq_len: 256}
 train:
+  gradient_accumulation_steps: 1
   max_steps: 2
   batch_size: 1
   log_interval: 1

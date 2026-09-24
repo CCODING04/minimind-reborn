@@ -1,10 +1,11 @@
 stage: dpo
 data: {dataset: dpo_mini, max_seq_len: 256, num_workers: 2}
 train:
+  gradient_accumulation_steps: 1
   max_steps: 4
   batch_size: 2
   log_interval: 1
   save_interval_steps: 100
-  init_from: null
+  init_from: pretrain   # 依赖 smoke_pretrain 先跑（make smoke 保证顺序）
 model: {hidden_size: 64, num_hidden_layers: 2, num_attention_heads: 4, num_key_value_heads: 2}
 dpo: {beta: 0.15}

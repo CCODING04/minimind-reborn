@@ -187,9 +187,11 @@ def validate_and_derive(cfg: RunConfig) -> RunConfig:
             raise ValueError(f"rl.rollout_engine 只支持 torch/sglang，得到 {cfg.rl.rollout_engine!r}")
 
     # ---- 输出目录派生 ----
+    # out/checkpoints 采用扁平布局（{weight}_{hidden}[_moe].pth），跨阶段 init_from 才能按官方命名直接解析；
+    # runs/ 按配方名+时间戳嵌套（可追溯四件套的归属）
     stamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    cfg.output_dir = cfg.output_dir or str(envs.out_root() / cfg.stage)
-    cfg.checkpoint_dir = cfg.checkpoint_dir or str(envs.checkpoint_root() / cfg.stage)
+    cfg.output_dir = cfg.output_dir or str(envs.out_root())
+    cfg.checkpoint_dir = cfg.checkpoint_dir or str(envs.checkpoint_root())
     cfg.run_dir = cfg.run_dir or str(envs.run_root() / cfg.recipe_name / stamp)
     return cfg
 

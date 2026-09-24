@@ -5,12 +5,13 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from minimind_reborn import envs
 from minimind_reborn.data.registry import _REGISTRY
 
-# 官方 minimind 数据集仓库（modelscope）
-MODELSCOPE_REPO = "jingyaogong/minimind_dataset"
+# 官方 minimind 数据集仓库（modelscope datasets，namespace 为 gongjy）
+MODELSCOPE_REPO = "gongjy/minimind_dataset"
 
 
 def main() -> None:
@@ -29,7 +30,7 @@ def main() -> None:
         print(f"已存在，跳过：{target}")
         return
     print(f"从 modelscope 下载 {MODELSCOPE_REPO}/{entry.file} …")
-    repo_dir = snapshot_download(MODELSCOPE_REPO, allow_patterns=[entry.file])
+    repo_dir = Path(snapshot_download(MODELSCOPE_REPO, repo_type="dataset", allow_patterns=[entry.file]))
     source = repo_dir / entry.file
     if not source.exists():
         raise SystemExit(f"下载完成但未找到 {entry.file}（仓库布局可能已变化），请检查 {repo_dir}")

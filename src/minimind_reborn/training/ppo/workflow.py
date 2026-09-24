@@ -42,6 +42,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     init = resolve_weight_path(t.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe)
     actor = build_model(cfg, tokenizer)
     load_inference_weights(actor, init, strict=True)
+    actor = actor.to(device)  # RL 循环不经 Trainer，设备搬运自己负责
     ref_model = build_model(cfg, tokenizer)
     load_inference_weights(ref_model, init, strict=True)
     ref_model.eval().requires_grad_(False).to(device)
@@ -73,7 +74,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
     for epoch in range(start_epoch, t.epochs):
         if sampler is not None:
             sampler.set_epoch(epoch)
-        loader = DataLoader(dataset, batch_size=t.batch_size, sampler=sampler, **loader_kwargs(t.num_workers))
+        loader = DataLoader(dataset, batch_size=t.batch_size, sampler=sampler, **loader_kwargs(cfg.data.num_workers))
         for step, batch in enumerate(loader, start=start_step + 1):
             stats = _ppo_step(cfg, session, actor, critic, ref_model, rollout_engine, reward_model,
                               tokenizer, batch, actor_optimizer, critic_optimizer,
@@ -82,6 +83,13 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
                 session.metrics.log(stats, epoch * iters + step)
                 logger.info("Epoch[%d/%d](%d/%d) %s", epoch + 1, t.epochs, step, len(loader),
                             " ".join(f"{k}={v:.4f}" for k, v in stats.items()))
+            if 0 < cfg.train.max_steps <= step:
+                logger.info("达到 max_steps=%d 截断（冒烟/调试预算）", cfg.train.max_steps)
+                session.save(actor, actor_optimizer, actor_scheduler, epoch, step,
+                             extra_states={"critic_model": critic, "critic_optimizer": critic_optimizer,
+                                           "critic_scheduler": critic_scheduler})
+                session.close()
+                return actor
             if step % t.save_interval_steps == 0 or step == len(loader):
                 session.save(actor, actor_optimizer, actor_scheduler, epoch, step,
                              extra_states={"critic_model": critic, "critic_optimizer": critic_optimizer,
