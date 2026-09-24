@@ -108,7 +108,13 @@ def test_generation_cancelled_midway(tiny_model):
         return steps["n"] > 5
 
     prompt = torch.randint(0, 64, (1, 4))
-    out = generate(tiny_model, prompt, GenerateConfig(temperature=0.0, max_new_tokens=64),
-                   eos_token_id=None, pad_token_id=0, cancel=cancel_after_5)
+    out = generate(
+        tiny_model,
+        prompt,
+        GenerateConfig(temperature=0.0, max_new_tokens=64),
+        eos_token_id=None,
+        pad_token_id=0,
+        cancel=cancel_after_5,
+    )
     assert out["generated_ids"].shape[1] == 5  # 第 6 步前中止
     assert out["finish_reasons"] == ["cancelled"]

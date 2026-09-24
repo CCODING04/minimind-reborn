@@ -8,10 +8,10 @@
 
 结论写入 out/official_compare.md 的"双实现"与"兼容性"两节。
 """
+
 from __future__ import annotations
 
 import argparse
-import json
 import statistics
 import sys
 import time
@@ -35,12 +35,12 @@ LONG_PROMPT = "从前有座山，山里有座庙，庙里有个老和尚和小�
 
 def build_our(path: Path, device: str):
     """我们的模型 + 我们的生成内核（预分配 KV cache）。"""
-    from minimind_reborn.models.config import MiniMindConfig
-    from minimind_reborn.models.model import MiniMindForCausalLM
-    from minimind_reborn.models.weights import load_inference_weights
     from transformers import AutoTokenizer
 
     from minimind_reborn import envs
+    from minimind_reborn.models.config import MiniMindConfig
+    from minimind_reborn.models.model import MiniMindForCausalLM
+    from minimind_reborn.models.weights import load_inference_weights
 
     cfg = MiniMindConfig()  # 默认值 = 768/8L/8q/4kv/96hd/2432，与官方权重实测 shape 一致
     model = MiniMindForCausalLM(cfg)
@@ -79,9 +79,15 @@ def our_generate(model, tokenizer, prompt: str, *, max_new_tokens: int, greedy: 
     gen = GenerateConfig(temperature=0.85, top_p=0.9, top_k=50)
     torch.cuda.reset_peak_memory_stats()
     t0 = time.perf_counter()
-    out = generate(model, inputs["input_ids"], gen, eos_token_id=tokenizer.eos_token_id,
-                   pad_token_id=tokenizer.pad_token_id, max_new_tokens=max_new_tokens,
-                   attention_mask=inputs["attention_mask"])
+    out = generate(
+        model,
+        inputs["input_ids"],
+        gen,
+        eos_token_id=tokenizer.eos_token_id,
+        pad_token_id=tokenizer.pad_token_id,
+        max_new_tokens=max_new_tokens,
+        attention_mask=inputs["attention_mask"],
+    )
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - t0
     tokens = out["sequences"].shape[1] - inputs["input_ids"].shape[1]
@@ -94,10 +100,15 @@ def official_generate(model, tokenizer, prompt: str, *, max_new_tokens: int, gre
     torch.cuda.reset_peak_memory_stats()
     t0 = time.perf_counter()
     out = model.generate(
-        inputs=inputs["input_ids"], attention_mask=inputs["attention_mask"],
-        max_new_tokens=max_new_tokens, do_sample=not greedy,
-        temperature=0.85, top_p=0.9, top_k=50,
-        pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id,
+        inputs=inputs["input_ids"],
+        attention_mask=inputs["attention_mask"],
+        max_new_tokens=max_new_tokens,
+        do_sample=not greedy,
+        temperature=0.85,
+        top_p=0.9,
+        top_k=50,
+        pad_token_id=tokenizer.pad_token_id,
+        eos_token_id=tokenizer.eos_token_id,
     )
     torch.cuda.synchronize()
     elapsed = time.perf_counter() - t0
@@ -118,8 +129,7 @@ def main() -> None:
     # ===== Phase A：strict 兼容性验证 =====
     print("=" * 60, "\nPhase A：strict 兼容性验证")
     our_model, tokenizer = build_our(OFFICIAL_DIR / "pretrain_768.pth", args.device)
-    report += ["## 权重兼容性", "",
-               "| 权重 | strict 载入 | 结论 |", "|---|---|---|"]
+    report += ["## 权重兼容性", "", "| 权重 | strict 载入 | 结论 |", "|---|---|---|"]
     for name in ("pretrain_768.pth", "full_sft_768.pth"):
         try:
             m, _ = build_our(OFFICIAL_DIR / name, args.device)
@@ -137,8 +147,13 @@ def main() -> None:
     official_model, tokenizer2 = build_official(OFFICIAL_DIR / "full_sft_768.pth", args.device)
 
     # 1) 贪心一致性
-    report += ["", "## 贪心输出一致性（同权重，前缀一致比例）", "",
-               "| prompt | 一致前缀 / 总生成 | 一致率 |", "|---|---|---|"]
+    report += [
+        "",
+        "## 贪心输出一致性（同权重，前缀一致比例）",
+        "",
+        "| prompt | 一致前缀 / 总生成 | 一致率 |",
+        "|---|---|---|",
+    ]
     agree_ratios = []
     for prompt in PROMPTS:
         ours, _, _ = our_generate(our_model, tokenizer, prompt, max_new_tokens=128, greedy=True)
@@ -151,11 +166,19 @@ def main() -> None:
         report.append(f"| {prompt[:18]}… | {agree}/{n} | {ratio:.1%} |")
         print(f"  {prompt[:16]}… 一致率 {ratio:.1%}")
     overall = statistics.mean(agree_ratios)
-    report += ["", f"**平均逐位一致率 {overall:.1%}**（同权重同数学，浮点路径差异来自 SDPA/manual prefill 与 cache 组织，属预期）", ""]
+    report += [
+        "",
+        f"**平均逐位一致率 {overall:.1%}**（同权重同数学，浮点路径差异来自 SDPA/manual prefill 与 cache 组织，属预期）",
+        "",
+    ]
 
     # 2) 吞吐与显存（长 prompt + 384 token 贪心生成，取中位）
-    report += ["## 推理吞吐与峰值显存（长 prompt，贪心 384 token，3 次取中位）", "",
-               "| 实现 | 吞吐 tok/s | 峰值显存 MB |", "|---|---|---|"]
+    report += [
+        "## 推理吞吐与峰值显存（长 prompt，贪心 384 token，3 次取中位）",
+        "",
+        "| 实现 | 吞吐 tok/s | 峰值显存 MB |",
+        "|---|---|---|",
+    ]
     results: dict[str, tuple[float, float]] = {}
     for impl, builder in (("reborn（KV cache 预分配）", "our"), ("official（每步 torch.cat）", "official")):
         rates, peaks = [], []
@@ -163,15 +186,24 @@ def main() -> None:
             if impl.startswith("reborn"):
                 _, rate, peak = our_generate(our_model, tokenizer, LONG_PROMPT, max_new_tokens=384, greedy=True)
             else:
-                _, rate, peak = official_generate(official_model, tokenizer2, LONG_PROMPT, max_new_tokens=384, greedy=True)
+                _, rate, peak = official_generate(
+                    official_model, tokenizer2, LONG_PROMPT, max_new_tokens=384, greedy=True
+                )
             rates.append(rate)
             peaks.append(peak)
         results[impl] = (statistics.median(rates), statistics.median(peaks))
         report.append(f"| {impl} | {statistics.median(rates):.0f} | {statistics.median(peaks):.0f} |")
         print(f"  {impl}: {statistics.median(rates):.0f} tok/s, {statistics.median(peaks):.0f} MB")
-    (our_rate, our_peak), (off_rate, off_peak) = results["reborn（KV cache 预分配）"], results["official（每步 torch.cat）"]
-    report += ["", f"**吞吐比 {our_rate / off_rate:.2f}×，显存差 {off_peak - our_peak:+.0f} MB**"
-               f"（63M 模型 + 短上下文下 KV cache 本身占比小，长上下文/大 batch 差距会放大）", ""]
+    (our_rate, our_peak), (off_rate, off_peak) = (
+        results["reborn（KV cache 预分配）"],
+        results["official（每步 torch.cat）"],
+    )
+    report += [
+        "",
+        f"**吞吐比 {our_rate / off_rate:.2f}×，显存差 {off_peak - our_peak:+.0f} MB**"
+        f"（63M 模型 + 短上下文下 KV cache 本身占比小，长上下文/大 batch 差距会放大）",
+        "",
+    ]
 
     # 3) 采样输出样例（供报告摘录）
     report += ["## 采样样例（官方 full_sft_768 权重，temperature 0.85 / top_p 0.9）", "", "```text"]
