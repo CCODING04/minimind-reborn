@@ -1,8 +1,8 @@
 """训练薄入口（project-structure §2.2：只做 解析参数 → 取配置 → 启动）。
 
 用法：
-    uv run python tools/train.py configs/pretrain_26m.yaml
-    uv run python tools/train.py configs/pretrain_26m.yaml --set train.max_steps=10 --set model.hidden_size=512
+    uv run python tools/train.py configs/pretrain_64m.yaml
+    uv run python tools/train.py configs/pretrain_64m.yaml --set train.max_steps=10 --set model.hidden_size=512
 """
 
 from __future__ import annotations

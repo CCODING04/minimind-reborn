@@ -1,6 +1,6 @@
 # minimind_reborn
 
-MiniMind 的工程化重构：以 `skills/ml-dev-spec` 训练项目形态复现 26M 级中文小模型全流程
+MiniMind 的工程化重构：以 `skills/ml-dev-spec` 训练项目形态复现 64M 级中文小模型全流程
 （pretrain → SFT → DPO → 蒸馏 / LoRA / GRPO / PPO / Agent RL → 推理服务）。
 重构动机与逐条诊断（19 条不满意清单）见 **[重构实录报告](../../Reproduce/report/index.html)**。
 
@@ -8,7 +8,7 @@ MiniMind 的工程化重构：以 `skills/ml-dev-spec` 训练项目形态复现 
 
 | 项 | 值 |
 |---|---|
-| 模型 | 26M dense（hidden 768 × 8 层，vocab 6400，与官方 minimind-26M 同规模） |
+| 模型 | 64M dense（hidden 768 × 8 层，vocab 6400，与官方 minimind-64M 同规模） |
 | 硬件 | 2 × RTX 4090 24GB（torchrun DDP） |
 | pretrain 吞吐 | ~190K tokens/s（bf16，seq 340） |
 | 测试 | 43 个单元测试（快层 CPU 可跑） |
@@ -24,10 +24,10 @@ uv run python tools/verify_env.py          # 装完 torch 必跑
 # 1) 冒烟（tiny 模型，分钟级，验证全链路）
 make smoke
 
-# 2) 完整训练（26M，单卡去掉 torchrun 前缀即可）
-uv run torchrun --nproc-per-node 2 tools/train.py configs/pretrain_26m.yaml
-uv run torchrun --nproc-per-node 2 tools/train.py configs/sft_26m.yaml     # init_from: pretrain
-uv run torchrun --nproc-per-node 2 tools/train.py configs/dpo_26m.yaml     # init_from: full_sft
+# 2) 完整训练（64M，单卡去掉 torchrun 前缀即可）
+uv run torchrun --nproc-per-node 2 tools/train.py configs/pretrain_64m.yaml
+uv run torchrun --nproc-per-node 2 tools/train.py configs/sft_64m.yaml     # init_from: pretrain
+uv run torchrun --nproc-per-node 2 tools/train.py configs/dpo_64m.yaml     # init_from: full_sft
 
 # 3) 对话
 uv run python tools/chat.py --weight full_sft
