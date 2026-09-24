@@ -244,7 +244,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
                 scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
             if step % t.log_interval == 0:
-                session.metrics.log(stats, epoch * iters + step)
+                session.metrics.log(stats, (epoch * iters + step) // cfg.train.gradient_accumulation_steps)
                 logger.info(
                     "Epoch[%d/%d](%d/%d) %s",
                     epoch + 1,

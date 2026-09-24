@@ -119,11 +119,18 @@ def build_backends(
 ) -> list[MetricBackend]:
     """按名字构建后端列表；jsonl 永远追加在首位（本地兜底不依赖配置）。
 
-    环境变量 MINIMIND_REBORN_METRICS_DISABLED=1 时全部替换为 null（测试/CI 强制离线）。
+    两条硬规则：
+    - 文件/云端 sink 只挂 rank0（logging-metrics §2 多进程纪律）——DDP 下两个 rank
+      各自追加同一 metrics.jsonl 会让 step 序列交错失真（真实踩坑后加的门）；
+    - 环境变量 MINIMIND_REBORN_METRICS_DISABLED=1 时全部替换为 null（测试/CI 强制离线）。
     """
+    from minimind_reborn.utils import dist
+
     if envs.metrics_disabled():
         warning_once(logger, "metrics-off", "MINIMIND_REBORN_METRICS_DISABLED=1，全部指标后端替换为 null")
         return [NullBackend()]
+    if not dist.is_main_process():
+        return [NullBackend()]  # 非 rank0 静默：指标走 rank0 单一写入方
 
     backends: list[MetricBackend] = [JSONLBackend(Path(run_dir) / "metrics.jsonl")]
     for name in names:

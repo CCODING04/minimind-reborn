@@ -96,7 +96,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
                 critic_scheduler,
             )
             if step % t.log_interval == 0:
-                session.metrics.log(stats, epoch * iters + step)
+                session.metrics.log(stats, (epoch * iters + step) // cfg.train.gradient_accumulation_steps)
                 logger.info(
                     "Epoch[%d/%d](%d/%d) %s",
                     epoch + 1,

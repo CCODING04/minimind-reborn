@@ -65,6 +65,17 @@ class SkipBatchSampler(Sampler):
         return max(0, total - self.skip_batches)
 
 
+def estimate_eta_minutes(elapsed_total_s: float, steps_done: int, steps_left: int) -> float:
+    """ETA 纯函数：epoch 开局至今总耗时 / 已完成步数 × 剩余步数（分钟）。
+
+    此前误用"距上次日志的窗口耗时"做分子——窗口只有几秒而步数是全量的，
+    商恒为 0.0（真实缺陷，2026-09-24 修复）。
+    """
+    if steps_done <= 0 or steps_left <= 0:
+        return 0.0
+    return elapsed_total_s / steps_done * steps_left / 60
+
+
 def _to_device(batch: dict, device: str) -> dict:
     return {k: v.to(device, non_blocking=True) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
@@ -186,8 +197,10 @@ class Trainer:
             logger.info("Epoch %d：跳过前 %d 个 micro step 续训", epoch + 1, start_step)
 
         self.model.train()
-        window_start = time.time()
+        window_start = time.time()  # 吞吐窗口（每次日志重置）
+        epoch_start = time.time()  # ETA 基准（epoch 开局，不重置）——此前误用窗口耗时导致 ETA 恒 0
         window_tokens = 0
+        window_steps = 0
         running_loss = 0.0
         last_grad_norm = 0.0
 
@@ -222,25 +235,29 @@ class Trainer:
                 self.optimizer_steps += 1
 
             running_loss += loss.item()
+            window_steps += 1
             # 范式 batch 结构不同（pretrain 有 input_ids，DPO 是 x/y/mask）——取首个 tensor 的 batch 维
             first_tensor = next(v for v in batch.values() if isinstance(v, torch.Tensor))
             window_tokens += int(first_tensor.shape[0]) * dist.get_world_size() * cfg.data.max_seq_len
 
             if (offset + 1) % t.log_interval == 0 or is_last:
-                elapsed = time.time() - window_start
-                tokens_per_s = window_tokens / max(elapsed, 1e-6)
-                train_loss = running_loss / t.log_interval
+                window_elapsed = time.time() - window_start
+                tokens_per_s = window_tokens / max(window_elapsed, 1e-6)
+                train_loss = running_loss / max(window_steps, 1)
                 running_loss = 0.0
                 window_start = time.time()
                 window_tokens = 0
-                eta_min = elapsed / max(offset + 1 - start_step, 1) * (iters - offset - 1) / 60
+                window_steps = 0
+                eta_min = estimate_eta_minutes(time.time() - epoch_start, offset + 1 - start_step, iters - offset - 1)
                 stats = {
                     **log_metrics,
                     "train/lr": lr,
                     "train/grad_norm": float(last_grad_norm),
                     "train/tokens_per_s": tokens_per_s,
                 }
-                self.metrics.log(stats, global_micro)
+                # train/val 统一用 optimizer step（模型当前步长）；此前 train 用 micro step、
+                # val 用另一计数，两把尺子导致曲线 x 轴错位
+                self.metrics.log(stats, self.optimizer_steps)
                 logger.info(
                     "Epoch[%d/%d](%d/%d) loss=%.4f lr=%.2e grad_norm=%.2f tok/s=%.0f eta=%.1fmin",
                     epoch + 1,

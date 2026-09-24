@@ -60,6 +60,28 @@ def tiny_moe_model(tiny_moe_cfg) -> MiniMindForCausalLM:
     return MiniMindForCausalLM(tiny_moe_cfg).eval()
 
 
+@pytest.fixture()
+def tiny_jsonl(tmp_path):
+    """微型 pretrain/sft 数据集（写入 tmp，不依赖真实数据根目录）。"""
+    import json
+
+    lines = [{"text": f"这是第{i}条测试文本，用于冒烟训练。" * 3} for i in range(64)]
+    p = tmp_path / "pretrain_smoke.jsonl"
+    p.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines), encoding="utf-8")
+    convs = [
+        {
+            "conversations": [
+                {"role": "user", "content": f"问题{i}"},
+                {"role": "assistant", "content": f"回答{i}，这是测试回复。"},
+            ]
+        }
+        for i in range(64)
+    ]
+    p2 = tmp_path / "sft_smoke.jsonl"
+    p2.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in convs), encoding="utf-8")
+    return p, p2
+
+
 requires_gpu = pytest.mark.skipif(
     not torch.cuda.is_available(), reason="需要 CUDA 设备（testing-quality §2 门槛装饰器）"
 )

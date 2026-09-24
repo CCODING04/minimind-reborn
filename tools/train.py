@@ -43,6 +43,7 @@ def main() -> None:
 
     local_rank = dist.init_distributed()
     cfg = load_config(args.recipe, args.overrides)
+    cfg.run_dir = dist.broadcast_object(cfg.run_dir)  # 时间戳在各 rank 各自取会得到不同目录，以 rank0 为准
     setup_logging(cfg.run_dir)
     logger.info("配方=%s stage=%s overrides=%s", cfg.recipe_name, cfg.stage, args.overrides)
 

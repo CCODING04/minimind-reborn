@@ -5,35 +5,13 @@ CPU 快层；GPU 路径由 configs/smoke/*.yaml 在 make smoke 中覆盖。
 
 from __future__ import annotations
 
-import json
 import os
-
-import pytest
 
 from minimind_reborn.configuration import load_config
 from minimind_reborn.inference.engine import MiniMindLLM
 from minimind_reborn.models.weights import load_inference_weights
 from minimind_reborn.training.common.setup import build_model, load_tokenizer
 from minimind_reborn.training.common.trainer import Trainer
-
-
-@pytest.fixture()
-def tiny_jsonl(tmp_path):
-    lines = [{"text": f"这是第{i}条测试文本，用于冒烟训练。" * 3} for i in range(64)]
-    p = tmp_path / "pretrain_smoke.jsonl"
-    p.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines), encoding="utf-8")
-    convs = [
-        {
-            "conversations": [
-                {"role": "user", "content": f"问题{i}"},
-                {"role": "assistant", "content": f"回答{i}，这是测试回复。"},
-            ]
-        }
-        for i in range(64)
-    ]
-    p2 = tmp_path / "sft_smoke.jsonl"
-    p2.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in convs), encoding="utf-8")
-    return p, p2
 
 
 def _make_cfg(tmp_path, stage):

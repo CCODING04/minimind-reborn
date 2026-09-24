@@ -55,6 +55,11 @@ def metrics_disabled() -> bool:
     return _get_int("MINIMIND_REBORN_METRICS_DISABLED", 0) == 1
 
 
+def log_all_ranks() -> bool:
+    """调试分布式时放开非 rank0 的控制台日志（默认只 rank0，防多卡交错刷屏）。"""
+    return _get_int("MINIMIND_REBORN_LOG_ALL_RANKS", 0) == 1
+
+
 def seed_offset() -> int:
     """全局种子偏移（同一配方跑不同 seed 的实验组）。"""
     return _get_int("MINIMIND_REBORN_SEED_OFFSET", 0)

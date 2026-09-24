@@ -75,3 +75,12 @@ def all_reduce_mean(value: float, device: str = "cpu") -> float:
     t = torch.tensor([value], device=device)
     dist.all_reduce(t, op=dist.ReduceOp.AVG)
     return float(t.item())
+
+
+def broadcast_object(obj, src: int = 0):
+    """rank0 的对象广播到全部 rank（如时间戳派生的 run_dir——各 rank 各自取时间会得到不同目录）。"""
+    if not is_initialized():
+        return obj
+    container = [obj]
+    dist.broadcast_object_list(container, src=src)
+    return container[0]
