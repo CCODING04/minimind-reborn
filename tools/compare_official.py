@@ -134,7 +134,7 @@ def main() -> None:
         try:
             m, _ = build_our(OFFICIAL_DIR / name, args.device)
             n = sum(p.numel() for p in m.parameters()) / 1e6
-            report.append(f"| 官方 {name} | ✅ strict=True 通过 | 键级完全兼容（{n:.1f}M） |")
+            report.append(f"| 官方 {name} | ✅ strict 通过 | 键级兼容（{n:.1f}M） |")
             print(f"  {name}: strict OK ({n:.1f}M)")
             del m
             torch.cuda.empty_cache()
@@ -168,7 +168,7 @@ def main() -> None:
     overall = statistics.mean(agree_ratios)
     report += [
         "",
-        f"**平均逐位一致率 {overall:.1%}**（同权重同数学，浮点路径差异来自 SDPA/manual prefill 与 cache 组织，属预期）",
+        f"**平均逐位一致率 {overall:.1%}**（同权重同数学；浮点路径差异来自 prefill 后端与 cache 组织，属预期）",
         "",
     ]
 
@@ -180,9 +180,9 @@ def main() -> None:
         "|---|---|---|",
     ]
     results: dict[str, tuple[float, float]] = {}
-    for impl, builder in (("reborn（KV cache 预分配）", "our"), ("official（每步 torch.cat）", "official")):
+    for impl, _builder in (("reborn（KV cache 预分配）", "our"), ("official（每步 torch.cat）", "official")):
         rates, peaks = [], []
-        for i in range(args.repeats):
+        for _ in range(args.repeats):
             if impl.startswith("reborn"):
                 _, rate, peak = our_generate(our_model, tokenizer, LONG_PROMPT, max_new_tokens=384, greedy=True)
             else:

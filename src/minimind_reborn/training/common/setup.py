@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import torch
 from transformers import AutoTokenizer
 
 from minimind_reborn import envs
@@ -27,7 +26,8 @@ def assert_vocab_match(vocab_size: int, tokenizer) -> None:
     """
     if vocab_size != len(tokenizer):
         raise ValueError(
-            f"模型 vocab_size({vocab_size}) != tokenizer 词表({len(tokenizer)})——权重与 tokenizer 混用自不同训练产物，禁止训练/推理"
+            f"模型 vocab_size({vocab_size}) != tokenizer 词表({len(tokenizer)})——"
+            f"权重与 tokenizer 混用自不同训练产物，禁止训练/推理"
         )
 
 
@@ -59,9 +59,3 @@ def build_lm_dataset(cfg: RunConfig, tokenizer, kind: str):
 def build_preference_dataset(cfg: RunConfig, tokenizer) -> DPODataset:
     path = file_path(resolve_dataset(cfg.data.dataset))
     return DPODataset(path, tokenizer, max_length=cfg.data.max_seq_len, empty_think_ratio=cfg.data.empty_think_ratio)
-
-
-def autocast(device: str, dtype: torch.dtype):
-    from minimind_reborn.training.common.amp import autocast_context
-
-    return autocast_context(dtype, device)

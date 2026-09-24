@@ -61,7 +61,7 @@ def convert_to_qwen(
     model.load_state_dict(state, strict=True)
     model = model.to(dtype)
     model.save_pretrained(out_path)
-    tokenizer = AutoTokenizer.from_pretrained("src/minimind_reborn/assets/tokenizer")
+    tokenizer = AutoTokenizer.from_pretrained("assets/tokenizer")
     tokenizer.save_pretrained(out_path)
     params = sum(p.numel() for p in model.parameters())
     print(f"已保存 HF(Qwen3{'-MoE' if use_moe else ''}) 格式：{out_path}（{params / 1e6:.1f}M）")

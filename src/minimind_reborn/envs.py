@@ -46,8 +46,8 @@ def run_root() -> Path:
 
 
 def tokenizer_path() -> Path:
-    """官方 tokenizer 目录（随包携带，与官方权重/数据兼容）。"""
-    default = Path(__file__).resolve().parent / "assets" / "tokenizer"
+    """官方已训好 tokenizer（6400 词表，与官方权重/数据互通；自训能力见 tools/train_tokenizer.py）。"""
+    default = Path(__file__).resolve().parents[2] / "assets" / "tokenizer"
     return Path(_get_str("MINIMIND_REBORN_TOKENIZER_PATH", str(default)))
 
 
@@ -62,13 +62,8 @@ def log_all_ranks() -> bool:
 
 
 def torch_threads() -> int:
-    """主进程 torch intraop 线程数（worker 扫描实测：4 worker 即饱和，8 线程富余，见 docs/pretrain_readiness.md §2）。"""
+    """主进程 torch intraop 线程数（实测 4 worker 即饱和、8 线程富余，见 docs/pretrain_readiness.md §2）。"""
     return _get_int("MINIMIND_REBORN_TORCH_THREADS", 8)
-
-
-def seed_offset() -> int:
-    """全局种子偏移（同一配方跑不同 seed 的实验组）。"""
-    return _get_int("MINIMIND_REBORN_SEED_OFFSET", 0)
 
 
 # 库代码在 import 期唯一允许设置的环境变量：关闭 tokenizers 的 fork 并行告警

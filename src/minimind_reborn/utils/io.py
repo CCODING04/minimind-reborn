@@ -28,7 +28,3 @@ def atomic_write_json(data: Any, path: str | Path) -> Path:
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     os.replace(tmp, path)
     return path
-
-
-def read_json(path: str | Path) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))

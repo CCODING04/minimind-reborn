@@ -235,7 +235,8 @@ def main() -> None:
         torch.cuda.empty_cache()
 
     report += [
-        "指标说明：3-gram 字符重复率（0=无循环，1=完全复读，越低越好）；平均生成长度（字符）；eos 命中 = 生成非空比例。",
+        "指标说明：3-gram 字符重复率（0=无循环，1=完全复读，越低越好）；",
+        "平均生成长度（字符）；eos 命中 = 生成非空比例。",
         "采样：temperature 0.8 / top_p 0.9 / top_k 50，3 seed × 9-10 prompt，max_new_tokens 128。",
         "",
         "| 权重 | 3-gram 重复率↓ | 平均长度 | 非空生成 |",
@@ -248,7 +249,7 @@ def main() -> None:
             "",
             "### 相同评测集上的损失对比",
             "",
-            "评测语料：我们 pretrain val 切片 20 batch（seq 340）+ sft val 切片 10 batch（seq 768）。",
+            "评测语料：我们 pretrain val 切片 20 batch（seq 340）\n+ sft val 切片 10 batch（seq 768）。",
             "**混杂说明**：官方权重在 full 10GB 语料训练，我们只用 mini 1.2GB——"
             "损失差距主要反映数据量与训练步数，而非代码差异。",
             "",
