@@ -44,8 +44,9 @@ def run_root() -> Path:
 
 
 def tokenizer_path() -> Path:
-    """官方 tokenizer 目录（随本仓库携带，与官方权重/数据兼容）。"""
-    return Path(_get_str("MINIMIND_REBORN_TOKENIZER_PATH", str(Path(__file__).resolve().parent.parent / "assets" / "tokenizer")))
+    """官方 tokenizer 目录（随包携带，与官方权重/数据兼容）。"""
+    default = Path(__file__).resolve().parent / "assets" / "tokenizer"
+    return Path(_get_str("MINIMIND_REBORN_TOKENIZER_PATH", str(default)))
 
 
 def metrics_disabled() -> bool:

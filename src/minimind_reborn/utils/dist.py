@@ -35,6 +35,11 @@ def get_rank() -> int:
     return 0
 
 
+def is_initialized() -> bool:
+    """torch.distributed 已初始化（透传容错：未安装 dist 时恒 False）。"""
+    return dist.is_available() and dist.is_initialized()
+
+
 def get_world_size() -> int:
     if dist.is_available() and dist.is_initialized():
         return dist.get_world_size()

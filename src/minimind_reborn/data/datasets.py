@@ -99,29 +99,37 @@ def _tail_split(n: int, eval_ratio: float) -> tuple[int, int]:
     return n - n_eval, n_eval
 
 
+class SegmentView(Dataset):
+    """数据集的连续段视图（train 段 / eval 段）：复用底层字节索引，不复制数据。"""
+
+    def __init__(self, base: "JsonlIndexedDataset", start: int, stop: int):
+        self._base = base
+        self._start = start
+        self._stop = stop
+
+    def __len__(self) -> int:
+        return self._stop - self._start
+
+    def __getitem__(self, index: int):
+        return self._base.encode(self._start + index)
+
+
 class PretrainDataset(JsonlIndexedDataset):
-    """全文语言建模：bos + text(bos/eos 由数据自含语义) + eos，pad 位 label 置 -100。"""
+    """全文语言建模：bos + text + eos，pad 位 label 置 -100。"""
 
     def __init__(self, path: str | Path, tokenizer, max_length: int = 512, eval_ratio: float = 0.0):
         super().__init__(path)
         self.tokenizer = tokenizer
         self.max_length = max_length
-        train_end, n_eval = _tail_split(len(self._offsets), eval_ratio)
-        self._train_end, self._eval_start = train_end, train_end
-        self._n_eval = n_eval
+        self._train_end, self._n_eval = _tail_split(len(self._offsets), eval_ratio)
 
-    def __len__(self) -> int:
-        return self._train_end  # DataLoader 迭代只看训练段；评估段走 eval 集包装
+    def train_view(self) -> SegmentView:
+        return SegmentView(self, 0, self._train_end)
 
-    def eval_view(self) -> "PretrainDataset":
-        """评估集视图（尾段），复用索引不复制数据。"""
-        view = self.__class__.__new__(self.__class__)
-        view.__dict__.update(self.__dict__)
-        view._train_end = len(self._offsets)
-        view._eval_start, view._n_eval = self._eval_start, self._n_eval
-        return view
+    def eval_view(self) -> SegmentView | None:
+        return SegmentView(self, self._train_end, len(self._offsets)) if self._n_eval > 0 else None
 
-    def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
+    def encode(self, index: int) -> dict[str, torch.Tensor]:
         sample = self.load_line(index)
         text = str(sample["text"])
         tokens = self.tokenizer(text, add_special_tokens=False, max_length=self.max_length - 2, truncation=True).input_ids
@@ -131,6 +139,9 @@ class PretrainDataset(JsonlIndexedDataset):
         labels = input_ids.clone()
         labels[input_ids == self.tokenizer.pad_token_id] = -100
         return {"input_ids": input_ids, "labels": labels}
+
+    def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
+        return self.encode(index)
 
 
 class SFTDataset(JsonlIndexedDataset):
@@ -151,18 +162,13 @@ class SFTDataset(JsonlIndexedDataset):
         self.add_system_ratio = add_system_ratio
         self.empty_think_ratio = empty_think_ratio
         self.prefix_ids, self.suffix_ids = pattern_ids(tokenizer)
-        train_end, n_eval = _tail_split(len(self._offsets), eval_ratio)
-        self._train_end, self._eval_start, self._n_eval = train_end, train_end, n_eval
+        self._train_end, self._n_eval = _tail_split(len(self._offsets), eval_ratio)
 
-    def __len__(self) -> int:
-        return self._train_end
+    def train_view(self) -> SegmentView:
+        return SegmentView(self, 0, self._train_end)
 
-    def eval_view(self) -> "SFTDataset":
-        view = self.__class__.__new__(self.__class__)
-        view.__dict__.update(self.__dict__)
-        view._train_end = len(self._offsets)
-        view._eval_start, view._n_eval = self._eval_start, self._n_eval
-        return view
+    def eval_view(self) -> SegmentView | None:
+        return SegmentView(self, self._train_end, len(self._offsets)) if self._n_eval > 0 else None
 
     def render(self, conversations: list[dict], remove_empty_think: bool | None = None) -> str:
         """对话 → chat template 文本（tools/tool_calls 字符串字段解析在内）。"""
@@ -177,18 +183,22 @@ class SFTDataset(JsonlIndexedDataset):
         prompt = self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=False, tools=tools)
         return post_processing_chat(prompt, self.empty_think_ratio, remove_empty_think)
 
-    def encode(self, prompt: str) -> tuple[list[int], list[int]]:
+    def _encode_prompt(self, prompt: str) -> tuple[list[int], list[int]]:
         input_ids = self.tokenizer(prompt).input_ids[: self.max_length]
         input_ids += [self.tokenizer.pad_token_id] * (self.max_length - len(input_ids))
         spans = find_response_spans(input_ids, self.prefix_ids, self.suffix_ids)
         labels = build_labels(input_ids, spans)
         return input_ids, labels
 
-    def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
+    def encode(self, index: int) -> dict[str, torch.Tensor]:
+        """行级编码（SegmentView 的统一入口）。"""
         sample = self.load_line(index)
         conversations = pre_processing_chat(sample["conversations"], self.add_system_ratio)
-        input_ids, labels = self.encode(self.render(conversations))
+        input_ids, labels = self._encode_prompt(self.render(conversations))
         return {"input_ids": torch.tensor(input_ids, dtype=torch.long), "labels": torch.tensor(labels, dtype=torch.long)}
+
+    def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
+        return self.encode(index)
 
 
 class DPODataset(JsonlIndexedDataset):
