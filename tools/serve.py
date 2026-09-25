@@ -4,8 +4,6 @@
 可选依赖 fail-fast：fastapi/uvicorn 缺失时在启动期报错（python-style §2）。
 """
 
-from __future__ import annotations
-
 import argparse
 import json
 import re
