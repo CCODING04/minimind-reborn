@@ -268,7 +268,7 @@ def suite_b(em: EvalModel) -> dict:
             }
         )
         sample_lines += [
-            f"### target≈{target} tok（实际 prompt {turn['prompt_tokens']}）| 重复率 {rep:.3f} | {'在题' if on_topic else '跑题'}",
+            f"### target≈{target} tok（实际 {turn['prompt_tokens']}）| 重复率 {rep:.3f} | {'在题' if on_topic else '跑题'}",
             "```text",
             ans[:200],
             "```",
@@ -378,7 +378,8 @@ def main() -> None:
             ]
             for lv in r["levels"]:
                 report.append(
-                    f"| ≈{lv['target_tokens']} | {lv['actual_prompt_tokens']} | {lv['gen_tokens']} | {lv['rep_rate']:.3f} | {'✅' if lv['on_topic'] else '❌'} |"
+                    f"| ≈{lv['target_tokens']} | {lv['actual_prompt_tokens']} | {lv['gen_tokens']} |"
+                    f" {lv['rep_rate']:.3f} | {'✅' if lv['on_topic'] else '❌'} |"
                 )
             report += [""]
             print("  B 完成")
@@ -386,7 +387,8 @@ def main() -> None:
         if "C" in args.suites:
             r = suite_c(em)
             report += [
-                f"**Suite C 长程稳定性（12 轮）**：前 3 轮平均重复率 {r['avg_rep_first3']} → 末 3 轮 {r['avg_rep_last3']}；角色漂移 {'是 ⚠' if r['role_drift'] else '否'}",
+                f"**Suite C 长程稳定性（12 轮）**：前 3 轮重复率 {r['avg_rep_first3']} → "
+                f"末 3 轮 {r['avg_rep_last3']}；角色漂移 {'是 ⚠' if r['role_drift'] else '否'}",
                 "",
             ]
             print(f"  C 前3/末3 重复率 {r['avg_rep_first3']}/{r['avg_rep_last3']}")
