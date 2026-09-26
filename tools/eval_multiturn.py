@@ -268,7 +268,8 @@ def suite_b(em: EvalModel) -> dict:
             }
         )
         sample_lines += [
-            f"### target≈{target} tok（实际 {turn['prompt_tokens']}）| 重复率 {rep:.3f} | {'在题' if on_topic else '跑题'}",
+            f"### target≈{target} tok（实际 {turn['prompt_tokens']}）| 重复率 {rep:.3f}"
+            f" | {'在题' if on_topic else '跑题'}",
             "```text",
             ans[:200],
             "```",
