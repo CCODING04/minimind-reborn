@@ -6,6 +6,11 @@ import math
 
 from transformers import PretrainedConfig
 
+# YaRN 推理外推参数单一来源：orig_max 必须等于模型实际训练窗口（380），否则插值按错误的
+# "训练窗"外推、质量被系统性低估；factor = 目标窗口 / 训练窗口（380×6=2280，覆盖评测 2048 档）。
+YARN_ORIGINAL_MAX_POSITION_EMBEDDINGS = 380
+YARN_DEFAULT_FACTOR = 6
+
 
 class MiniMindConfig(PretrainedConfig):
     model_type = "minimind"
@@ -30,6 +35,7 @@ class MiniMindConfig(PretrainedConfig):
         rope_theta: float = 1e6,
         tie_word_embeddings: bool = True,
         inference_rope_scaling: bool = False,
+        inference_rope_factor: int = YARN_DEFAULT_FACTOR,
         num_experts: int = 4,
         num_experts_per_tok: int = 1,
         moe_intermediate_size: int | None = None,
@@ -57,12 +63,13 @@ class MiniMindConfig(PretrainedConfig):
         self.rms_norm_eps = rms_norm_eps
         self.rope_theta = rope_theta
         self.inference_rope_scaling = inference_rope_scaling
+        self.inference_rope_factor = inference_rope_factor
         self.rope_scaling = (
             {
                 "beta_fast": 32,
                 "beta_slow": 1,
-                "factor": 16,
-                "original_max_position_embeddings": 2048,
+                "factor": inference_rope_factor,
+                "original_max_position_embeddings": YARN_ORIGINAL_MAX_POSITION_EMBEDDINGS,
                 "attention_factor": 1.0,
                 "type": "yarn",
             }
@@ -93,6 +100,7 @@ def config_from_modelcfg(m) -> MiniMindConfig:
         rope_theta=m.rope_theta,
         tie_word_embeddings=m.tie_word_embeddings,
         inference_rope_scaling=m.inference_rope_scaling,
+        inference_rope_factor=m.inference_rope_factor,
         num_experts=m.num_experts,
         num_experts_per_tok=m.num_experts_per_tok,
         moe_intermediate_size=m.moe_intermediate_size,

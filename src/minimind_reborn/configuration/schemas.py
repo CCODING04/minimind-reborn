@@ -33,7 +33,8 @@ class ModelConfig:
     rms_norm_eps: float = 1e-6
     rope_theta: float = 1e6
     tie_word_embeddings: bool = True
-    inference_rope_scaling: bool = False  # 推理期 YaRN 外推（4 倍），训练恒为 False
+    inference_rope_scaling: bool = False  # 推理期 YaRN 外推开关，训练恒为 False
+    inference_rope_factor: int = 6  # 外推倍数 = 目标窗/训练窗（380×6=2280，覆盖评测 2048 档）
     # ---- MoE 专属（use_moe=False 时忽略） ----
     num_experts: int = 4
     num_experts_per_tok: int = 1

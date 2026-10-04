@@ -42,7 +42,11 @@ def precompute_freqs_cis(
     freqs = 1.0 / (rope_base ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     attn_factor = 1.0
     if rope_scaling is not None:
-        orig_max = rope_scaling.get("original_max_position_embeddings", 2048)
+        from minimind_reborn.models.config import YARN_ORIGINAL_MAX_POSITION_EMBEDDINGS
+
+        orig_max = rope_scaling.get(
+            "original_max_position_embeddings", YARN_ORIGINAL_MAX_POSITION_EMBEDDINGS
+        )
         factor = rope_scaling.get("factor", 16)
         beta_fast = rope_scaling.get("beta_fast", 32.0)
         beta_slow = rope_scaling.get("beta_slow", 1.0)

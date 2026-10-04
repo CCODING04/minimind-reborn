@@ -114,7 +114,7 @@ class MultiTurnSession:
 
 
 class EvalModel:
-    def __init__(self, name: str, weight: Path, official: bool, device: str):
+    def __init__(self, name: str, weight: Path, official: bool, device: str, rope_scaling: bool = False):
         self.name = name
         self.official = official
         self.device = device
@@ -139,7 +139,9 @@ class EvalModel:
             from minimind_reborn.models.model import MiniMindForCausalLM
             from minimind_reborn.models.weights import load_inference_weights
 
-            self.model = MiniMindForCausalLM(MiniMindConfig()).half().eval().to(device)
+            self.model = MiniMindForCausalLM(
+                MiniMindConfig(inference_rope_scaling=rope_scaling)
+            ).half().eval().to(device)
             load_inference_weights(self.model, weight, strict=True)
 
     def new_session(self) -> MultiTurnSession:
@@ -345,20 +347,46 @@ def main() -> None:
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--out", default=str(REPO / "out" / "multiturn_eval.md"))
     parser.add_argument("--suites", default="ABCD", help="要跑的套件（默认 ABCD）")
+    parser.add_argument(
+        "--weights",
+        default="ours_dpo,ours_full_sft,official_full_sft",
+        help="逗号分隔，可选 ours_dpo / ours_full_sft / official_full_sft",
+    )
+    parser.add_argument(
+        "--rope-scaling", action="store_true", help="我方权重开启 YaRN 推理外推（orig_max=380，factor=6）"
+    )
     args = parser.parse_args()
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
 
-    weight_specs = [
-        ("ours_dpo", REPO / "out" / "dpo_768.pth", False),
-        ("ours_full_sft", REPO / "out" / "full_sft_768.pth", False),
-        ("official_full_sft", OFFICIAL_DIR / "full_sft_768.pth", True),
-    ]
+    all_specs = {
+        "ours_dpo": ("ours_dpo", REPO / "out" / "dpo_768.pth", False),
+        "ours_full_sft": ("ours_full_sft", REPO / "out" / "full_sft_768.pth", False),
+        "official_full_sft": ("official_full_sft", OFFICIAL_DIR / "full_sft_768.pth", True),
+        # era1 = 档一重训前的基线权重（旧管线训练，归档于 out/archive/era1/）
+        "ours_dpo_era1": ("ours_dpo_era1", REPO / "out" / "archive" / "era1" / "dpo_768.pth", False),
+        "ours_full_sft_era1": (
+            "ours_full_sft_era1",
+            REPO / "out" / "archive" / "era1" / "full_sft_768.pth",
+            False,
+        ),
+    }
+    selected = [w.strip() for w in args.weights.split(",") if w.strip()]
+    unknown = [w for w in selected if w not in all_specs]
+    if unknown:
+        raise SystemExit(f"未知权重名：{unknown}；可选：{list(all_specs)}")
+    weight_specs = [all_specs[w] for w in selected]
 
     report: list[str] = ["# 多轮/连续对话能力检测", ""]
+    if args.rope_scaling:
+        report += [
+            "> **YaRN 推理外推已开启**：`inference_rope_scaling=True`，"
+            "插值 orig_max=380（=实际训练窗）、factor=6（外推目标 2280 tok）。",
+            "",
+        ]
 
     for name, weight, official in weight_specs:
         print(f"===== {name} =====")
-        em = EvalModel(name, weight, official, args.device)
+        em = EvalModel(name, weight, official, args.device, rope_scaling=args.rope_scaling)
         report += [f"## {name}", ""]
 
         if "A" in args.suites:

@@ -15,13 +15,17 @@ def _match_at(seq: list[int], pattern: list[int], i: int) -> bool:
     return seq[i : i + len(pattern)] == pattern
 
 
-def find_response_spans(input_ids: list[int], prefix_ids: list[int], suffix_ids: list[int]) -> list[tuple[int, int]]:
-    """扫描出每个 assistant 回答的 [start, end) 半开区间（start 在回答首 token，end 含结尾 suffix）。
+def scan_response_spans(
+    input_ids: list[int], prefix_ids: list[int], suffix_ids: list[int]
+) -> tuple[list[tuple[int, int]], int]:
+    """扫描 assistant 回答区间，返回（完整区间列表, 尾部残段数）。
 
-    与官方 generate_labels/generate_loss_mask 的扫描语义逐行等价：
-    命中 prefix 后，从 prefix 之后开始找第一个 suffix 匹配点；区间覆盖到 suffix 末尾。
+    C2 语义（重训计划 §7.2）：区间必须以完整 suffix（"<|im_end|>\\n"）收口才计入监督；
+    只有 prefix 开头、suffix 被截断丢失的残段不计入损失区间（返回 dangling 计数供诊断）——
+    此前残段被兜底划入监督区间，模型在学「没有结尾的半截话」（复读/戛然而止的训练侧源头）。
     """
     spans: list[tuple[int, int]] = []
+    dangling = 0
     i = 0
     n = len(input_ids)
     while i < n:
@@ -30,12 +34,25 @@ def find_response_spans(input_ids: list[int], prefix_ids: list[int], suffix_ids:
             end = start
             while end < n and not _match_at(input_ids, suffix_ids, end):
                 end += 1
-            stop = min(end + len(suffix_ids), n)
-            spans.append((start, stop))
-            i = stop
+            if end < n:
+                stop = end + len(suffix_ids)
+                spans.append((start, stop))
+                i = stop
+            else:
+                dangling += 1
+                i = n
         else:
             i += 1
-    return spans
+    return spans, dangling
+
+
+def find_response_spans(input_ids: list[int], prefix_ids: list[int], suffix_ids: list[int]) -> list[tuple[int, int]]:
+    """完整 assistant 回答的 [start, end) 半开区间（start 在回答首 token，end 含结尾 suffix）。
+
+    与官方 generate_labels/generate_loss_mask 的扫描语义在「完整回答」上逐行等价；
+    差异点：尾部残段不再计区间（见 scan_response_spans 的 C2 语义说明）。
+    """
+    return scan_response_spans(input_ids, prefix_ids, suffix_ids)[0]
 
 
 def pattern_ids(tokenizer) -> tuple[list[int], list[int]]:

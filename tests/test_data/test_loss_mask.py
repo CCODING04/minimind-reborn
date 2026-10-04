@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from minimind_reborn.constants import ASSISTANT_PREFIX_TEXT, RESPONSE_SUFFIX_TEXT
 from minimind_reborn.data.datasets import post_processing_chat, pre_processing_chat
-from minimind_reborn.data.loss_mask import build_labels, build_mask, find_response_spans, pattern_ids
+from minimind_reborn.data.loss_mask import (
+    build_labels,
+    build_mask,
+    find_response_spans,
+    pattern_ids,
+    scan_response_spans,
+)
 
 
 def test_pattern_ids_shape(tokenizer):
@@ -50,14 +56,37 @@ def test_multi_turn_two_spans(tokenizer):
     assert "A1" in a1 and "A2" in a1 and "Q1" not in a1
 
 
-def test_truncated_response_partial_suffix(tokenizer):
-    """回答被 max_length 截断在 suffix 中间：span 收口到序列末尾（与官方扫描语义一致）。"""
+def test_truncated_response_dangling_not_supervised(tokenizer):
+    """C2 语义（重训计划 §7.2）：残段（无完整 <|im_end|>\\n 结尾）不进监督区间。
+
+    旧行为把残段兜底划入损失区间（spans[0][1] == len(ids)），模型在学「没有结尾的
+    半截话」；修复后残段仅计数（scan_response_spans 的 dangling），labels 全 -100。
+    """
     prompt = "<|im_start|>user\nQ<|im_end|>\n<|im_start|>assistant\n回答内容"
     ids = tokenizer(prompt).input_ids  # 无 <|im_end|>\n 结尾
     prefix_ids, suffix_ids = pattern_ids(tokenizer)
-    spans = find_response_spans(ids, prefix_ids, suffix_ids)
-    assert len(spans) == 1
-    assert spans[0][1] == len(ids)  # 收口到末尾
+    spans, dangling = scan_response_spans(ids, prefix_ids, suffix_ids)
+    assert spans == []  # 残段不计监督区间
+    assert dangling == 1  # 计数供诊断
+    labels = build_labels(ids, spans)
+    assert all(lab == -100 for lab in labels)
+
+
+def test_dangling_after_complete_spans_partial(tokenizer):
+    """完整区间之后的尾部残段：完整区间保留，仅残段不计。"""
+    prompt = (
+        "<|im_start|>user\nQ1<|im_end|>\n"
+        "<|im_start|>assistant\nA1<|im_end|>\n"
+        "<|im_start|>user\nQ2<|im_end|>\n"
+        "<|im_start|>assistant\n被截断的半截回答"
+    )
+    ids = tokenizer(prompt).input_ids
+    prefix_ids, suffix_ids = pattern_ids(tokenizer)
+    spans, dangling = scan_response_spans(ids, prefix_ids, suffix_ids)
+    assert len(spans) == 1 and dangling == 1
+    mask = build_mask(ids, spans)
+    supervised = tokenizer.decode([i for i, m in zip(ids, mask, strict=False) if m == 1])
+    assert "A1" in supervised and "半截" not in supervised
 
 
 def test_chat_preprocessing_deterministic_under_seed():

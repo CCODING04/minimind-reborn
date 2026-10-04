@@ -95,41 +95,22 @@ def frac_ge(vals: list[float], t: int) -> float:
 
 
 def scan_spans(ids: list[int]) -> tuple[int, int]:
-    """扫描 assistant 完整区间与被截断的尾部残段。
+    """扫描 assistant 完整区间与残段——已与训练同源（loss_mask.scan_response_spans）。
 
-    返回 (完整区间数, 残段数)。残段 = 有 <|im_start|>assistant\\n 开头但 <|im_end|>\\n
-    被截断丢掉的半截回复——训练语义问题：残段 token 仍计 loss（见 loss_mask 的扫描实现）。
+    C2 语义：残段（有 <|im_start|>assistant\\n 开头但 <|im_end|>\\n 被截断丢失）
+    不计入监督区间，仅计数供诊断。
     """
-    complete = dangling = 0
-    i, n = 0, len(ids)
-    while i < n:
-        if ids[i : i + LPRE] == PRE_IDS:
-            start = i + LPRE
-            end = start
-            while end < n and ids[end : end + LSUF] != SUF_IDS:
-                end += 1
-            if end < n:
-                complete += 1
-                i = end + LSUF
-            else:
-                dangling += 1
-                i = n
-        else:
-            i += 1
-    return complete, dangling
+    from minimind_reborn.data.loss_mask import scan_response_spans
+
+    spans, dangling = scan_response_spans(ids, PRE_IDS, SUF_IDS)
+    return len(spans), dangling
 
 
 def render_conv(convs: list[dict]) -> str:
-    """镜像 SFTDataset.render（不含随机 system 插入）：解析 tools/tool_calls 字符串字段。"""
-    messages, tools = [], None
-    for m in convs:
-        m = dict(m)
-        if m.get("role") == "system" and m.get("tools"):
-            tools = json.loads(m["tools"]) if isinstance(m["tools"], str) else m["tools"]
-        if m.get("tool_calls") and isinstance(m["tool_calls"], str):
-            m["tool_calls"] = json.loads(m["tool_calls"])
-        messages.append(m)
-    return TOK.apply_chat_template(messages, tokenize=False, add_generation_prompt=False, tools=tools)
+    """渲染单条对话（与 SFTDataset.render 同源，经 render_conversations；无随机 system 插入）。"""
+    from minimind_reborn.data.datasets import render_conversations
+
+    return render_conversations(TOK, convs, remove_empty_think=False)
 
 
 def profile_pretrain_len(lines: list[bytes], train_seq: int) -> dict[str, Any]:
@@ -149,26 +130,44 @@ def profile_pretrain_len(lines: list[bytes], train_seq: int) -> dict[str, Any]:
 
 
 def profile_sft_len(lines: list[bytes], train_seq: int) -> dict[str, Any]:
+    """SFT 截断损毁画像——与训练完全同源（encode_sft_sample：C1 轮次适配 + C2 残段不计损）。
+
+    测量口径：full_len 为渲染全长（未适配）；survival = 适配后完整回复数 / 适配前完整回复数；
+    dangling/hard_truncated/zero_loss 均为适配后的最终训练语义。
+    """
+    from minimind_reborn.data.datasets import encode_sft_sample
+
     conv_lens: list[float] = []
     multi_lens: list[float] = []
     survival: list[float] = []
     zero_mask = 0
     multi_n = 0
+    damaged_n = 0  # full_len > train_seq 的多轮样本（旧口径下必然拦腰受损）
+    fitted_n = 0  # 触发轮次适配
+    hard_trunc_n = 0  # 单回复超窗硬截
+    dangling_total = 0  # 残段总数（C2 后不计损，仅诊断）
+    complete_after_total = 0
     for line in lines:
         convs = json.loads(line)["conversations"]
-        ids = TOK(render_conv(convs), add_special_tokens=False).input_ids
-        conv_lens.append(float(len(ids)))
+        out = encode_sft_sample(TOK, PRE_IDS, SUF_IDS, convs, train_seq, remove_empty_think=False)
+        stats = out["stats"]
+        conv_lens.append(float(stats["full_len"]))
         if len(convs) > 2:
             multi_n += 1
-            multi_lens.append(float(len(ids)))
-            if len(ids) > train_seq:
-                cut = ids[:train_seq]
-                complete_before, _ = scan_spans(ids)
-                complete_after, dangling = scan_spans(cut)
-                if complete_before > 0:
-                    survival.append(complete_after / complete_before)
-                if complete_after == 0:
-                    zero_mask += 1  # 截断后无任何完整 assistant 区间 = loss mask 全零（白训）
+            multi_lens.append(float(stats["full_len"]))
+            if stats["full_len"] > train_seq:
+                damaged_n += 1
+                if stats["fitted"]:
+                    fitted_n += 1
+                if stats["hard_truncated"]:
+                    hard_trunc_n += 1
+                dangling_total += stats["dangling"]
+                complete_after_total += stats["complete_after"]
+                if stats["complete_before"] > 0:
+                    survival.append(stats["complete_after"] / stats["complete_before"])
+                if stats["zero_loss"]:
+                    zero_mask += 1
+    kept_total_spans = complete_after_total + dangling_total
     return {
         "conv_token_len": describe(conv_lens),
         "truncated_at_train_seq": frac_ge(conv_lens, train_seq),
@@ -176,6 +175,15 @@ def profile_sft_len(lines: list[bytes], train_seq: int) -> dict[str, Any]:
             "share_of_sample": round(multi_n / max(len(lines), 1), 4),
             "token_len": describe(multi_lens) if multi_lens else {},
             "truncated_at_train_seq": frac_ge(multi_lens, train_seq) if multi_lens else 0,
+            "damaged_over_seq": damaged_n,
+            "turn_fitted_rate": round(fitted_n / max(damaged_n, 1), 4),
+            "hard_truncated_rate": round(hard_trunc_n / max(damaged_n, 1), 4),
+            "dangling_per_damaged": round(dangling_total / max(damaged_n, 1), 4),
+            # 结构保证主指标（§4.1）：留下的回复区间中完整区间的占比，目标 100%
+            # （残段唯一来源是「单条回复自身超窗」的硬截，这类样本由 C3 在训练期过滤）
+            "assistant_span_intact_rate": round(complete_after_total / max(kept_total_spans, 1), 4),
+            # 旧口径（完整后/完整前）：轮次丢弃按设计减少分子（旧轮次回复被整轮舍弃），
+            # 与旧拦腰截断的「完整存活率」语义不同，不可直比
             "assistant_span_survival_rate": round(statistics.mean(survival), 4) if survival else None,
             "zero_loss_mask_rate": round(zero_mask / max(multi_n, 1), 4) if multi_n else 0,
         },
