@@ -1,0 +1,21 @@
+# 64M 长上下文 SFT（重训计划档一：管线修复后全量 sft_t2t，seq 1536）
+# 对照基线 configs/sft_full.yaml：窗口 768→1536，bs 8×accum 2 与旧 16×1 的
+# 「样本/优化步」与「token/优化步」等量；学习率不变（控制变量）。
+# 前置：阶段 1 管线修复（C1-C5）已合入，本配方自动使用轮次截断/去重/哈希分桶。
+stage: sft
+data:
+  dataset: sft_t2t
+  max_seq_len: 1536       # 768 → 1536：多轮会话 p90=1633 的绝大多数装进窗口
+  eval_ratio: 0.003       # C5 修复后为哈希分桶口径（与旧尾切 val 不可直比）
+  num_workers: 16         # perf_analysis 案 A：SFT 编码重尾 + CPU load 仅 4.4/32，16 workers 喂饱双卡
+train:
+  epochs: 2
+  batch_size: 8           # 8×1536 = 16×768，单批 token 数不变
+  gradient_accumulation_steps: 2
+  learning_rate: 1.0e-5   # 与 sft_full.yaml 一致
+  dtype: bf16
+  init_from: pretrain     # 现有 out/pretrain_768.pth（380 底座）
+  save_interval_steps: 2000
+  log_interval: 100
+metrics:
+  backends: ["tensorboard"]

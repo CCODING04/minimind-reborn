@@ -1,0 +1,22 @@
+# 长上下文续训（重训计划档二 4a）：预训练权重 + 长文档子集 + 窗口 1536
+# 治长上下文的根：底座只见过 380 token 序列（YaRN 外推实测负收益，SFT 拉窗只是外推微调）。
+# 加载现有 pretrain 权重、低学习率继续预训练——业界标准做法（LLaMA-2/Qwen 长上下文扩展同路线）。
+stage: pretrain
+data:
+  dataset: pretrain_longctx
+  max_seq_len: 1536
+  eval_ratio: 0.003
+  num_workers: 8
+train:
+  epochs: 1
+  batch_size: 16          # 每优化步 16×4×1536≈98K token ≈ 旧配方 32×8×380≈97K
+  gradient_accumulation_steps: 4
+  learning_rate: 5.0e-5   # 原峰值 5e-4 的 1/10：续训是「适应长度」不是「学新知识」
+  warmup_steps: 200       # 加载权重后续训必须热身（从零训的官方配方 warmup=0 不适用）
+  lr_min_ratio: 0.1       # 余弦退火下限 = 5e-6
+  dtype: bf16
+  init_from: pretrain     # 现有 out/pretrain_768.pth（旧底座已归档 era1，覆盖安全）
+  save_interval_steps: 1000
+  log_interval: 50
+metrics:
+  backends: ["tensorboard"]

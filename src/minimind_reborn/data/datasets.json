@@ -33,5 +33,15 @@
     "file": "sft_t2t.jsonl",
     "kind": "sft",
     "description": "SFT 对话语料全量版（~14GB）"
+  },
+  "sft_t2t_mt": {
+    "file": "sft_t2t_mt.jsonl",
+    "kind": "sft",
+    "description": "档二多轮增强：sft_t2t 全量 + Belle multiturn 中文多轮 30 万（seed 42 确定性抽取，去污染后）"
+  },
+  "pretrain_longctx": {
+    "file": "pretrain_longctx.jsonl",
+    "kind": "pretrain",
+    "description": "档二 4a 长上下文续训子集：≥768 token 长文档（tokenize 精筛）+ 25% 短文档回放"
   }
 }
