@@ -51,8 +51,18 @@ def worker_init() -> dict:
 
 
 def loader_kwargs(num_workers: int) -> dict:
-    """DataLoader 通用 kwargs（pin_memory + worker 种子），集中一处。"""
+    """DataLoader 通用 kwargs（pin_memory + 深预取 + 常驻 worker + worker 种子），集中一处。
+
+    prefetch_factor=4 / persistent_workers=True（2026-09-29 perf_analysis 案 A 放大器
+    修复）：SFT 编码带重尾（p99≈7900 token 的样本单条秒级），默认浅缓冲（prefetch=2、
+    非常驻）会让尾延迟全额透传成 GPU 停等——加深到 4×workers 个 batch 的缓冲吸收抖动，
+    常驻 worker 免去每 epoch 重建。两参数仅 num_workers>0 时合法。
+    """
     kwargs: dict = {"num_workers": num_workers, "pin_memory": True}
     if num_workers > 0:
-        kwargs["worker_init_fn"] = seed_worker
+        kwargs.update(
+            worker_init_fn=seed_worker,
+            prefetch_factor=4,
+            persistent_workers=True,
+        )
     return kwargs

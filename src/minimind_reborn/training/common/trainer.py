@@ -79,6 +79,21 @@ def estimate_eta_minutes(elapsed_total_s: float, steps_done: int, steps_left: in
     return elapsed_total_s / steps_done * steps_left / 60
 
 
+def per_rank_full_iters(n_samples: int, batch_size: int, world_size: int) -> int:
+    """本 rank 每 epoch 的完整 micro 步数（LR 调度 / 全局步数记账的分母）。
+
+    DDP 下 DistributedSampler 给每 rank 只分 1/world 样本，本 rank 每 epoch 实际迭代
+    约为全量口径的 1/world——分母必须按本 rank 口径折算。此前按全量计算，双卡时余弦
+    分母 ×2：2 epochs 跑完 LR 只退到 75% 进度处（≈lr×0.23），到不了 lr×min_ratio
+    地板（2026-09-29 perf_analysis 案 B；单卡 world=1 时两种口径恰好一致，mini 时代
+    因此未暴露）。双重 ceil 的 ≤1 步偏差与 DistributedSampler 的 padding 语义对齐。
+    """
+    full = (n_samples + batch_size - 1) // batch_size
+    if world_size <= 1:
+        return full
+    return (full + world_size - 1) // world_size
+
+
 def _to_device(batch: dict, device: str) -> dict:
     return {k: v.to(device, non_blocking=True) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
@@ -210,7 +225,7 @@ class Trainer:
             logger.info("Epoch %d：跳过前 %d 个 micro step 续训", epoch + 1, start_step)
         # 完整 epoch 步数（不扣 skip）：全局步数记账/LR 调度的分母必须用它。
         # iters 是"本次实际迭代数"（续训时 = 完整步数 - start_step），只用于循环结束判定。
-        full_iters = (len(self.train_ds) + t.batch_size - 1) // t.batch_size
+        full_iters = per_rank_full_iters(len(self.train_ds), t.batch_size, dist.get_world_size())
 
         self.model.train()
         window_start = time.time()  # 吞吐窗口（每次日志重置）
