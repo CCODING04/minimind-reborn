@@ -283,6 +283,18 @@ footer {
 <h2 id="sec1"><span class="sec-no">01</span>特征字典：每个特征是什么、怎么算、怎么测、怎么比</h2>
 <p>对比模型之前必须先讲清「尺子」。本章 10 个特征全部是本项目实际测过的，每个按统一四段式说明。<strong>总原则</strong>：特征对比只在「同一测量方式」（同评测集、同随机种子、同判定规则）下有意义——本项目全部评测固定 seed 42。</p>
 
+<div class="feat"><h3>评测套件 A/B/C/D 总览（tools/eval_multiturn.py）</h3><div class="feat-body">
+<p>本章 1.2–1.7、1.9、1.10 的多轮对话指标全部来自自建评测脚本 <code>tools/eval_multiturn.py</code> 的四个测试套件（1.3 是对套件 A 逐用例样例的人工归因核对）。运行 <code>tools/eval_multiturn.py --suites ABCD</code>：汇总追加写入 <code>out/multiturn_eval.md</code>，逐套件对话样例落盘 <code>out/multiturn_samples/suite{A,B,C}_*.md</code> 供人工核对。</p>
+<table>
+<tr><th>套件</th><th>测什么</th><th>方法</th><th>量化口径</th></tr>
+<tr><td><strong>A 跨轮记忆</strong><br>→ 特征 1.2、1.3</td><td>同会话内信息注入后的召回——「听过→记住→取回」链路</td><td>4 组 2-4 轮剧本：首轮注入事实（姓名/年龄/语言/数字/暗号/书名），指定轮次追问</td><td>追问轮<strong>回答文本</strong>的关键词子串命中（4 剧本共 12 关键词），召回率 = 命中数 / 12</td></tr>
+<tr><td><strong>B 上下文长度压力</strong><br>→ 特征 1.5、1.6、1.7</td><td>训练窗内外的外推行为</td><td>合成多轮「知识点积累」历史垫长到 256/512/768/1024/1536/2048 六档，末尾固定同一问题</td><td>逐档 3-gram 重复率、生成 token 数、在题判定（正则初判 + 人工核对）</td></tr>
+<tr><td><strong>C 长程多轮稳定</strong><br>→ 特征 1.4、1.9</td><td>长会话退化与角色漂移</td><td>单 session 连续 12 轮自然对话（机器学习学习路线话题链）</td><td>逐轮重复率曲线（末 3 轮 vs 前 3 轮均值之差）、角色漂移粗判、逐轮生成长度与延迟</td></tr>
+<tr><td><strong>D 长度边界行为</strong><br>→ 特征 1.10</td><td>超训练窗极限输入的实际表现</td><td>构造 ~40000 token prompt（&gt; RoPE 表 32768）后追问「总结一下。」；只对 ours_dpo 跑</td><td>报错形态与信息量（预期 RuntimeError 形状不匹配）</td></tr>
+</table>
+<div class="alert tips"><strong>统一口径</strong>：全部套件固定 seed 42（每轮生成前重置）、温度 0.7 / top_p 0.9 / 生成上限 192 token（防失控）；多轮语义与 ChatSession 一致——每轮全历史重渲染 → 截断编码 → 生成 → eos 尾截 → 回填历史。主测 ours_dpo，对照 ours_full_sft / official_full_sft（可加 era1 归档权重）。更完整的实验设计见 <a href="multiturn.html#design">multiturn.html「02 实验设计」</a>。</div>
+</div></div>
+
 <div class="feat"><h3>1.1 交叉熵损失（CE loss）与困惑度（PPL）</h3><div class="feat-body">
 <p><strong>是什么</strong>：模型对文本的预测不确定度。CE = 每个 token 的 −log P(正确词) 的平均值；PPL = exp(CE)，直观含义是「平均每个位置等效于在多少个词里犹豫」。CE 2.0 ≈ PPL 7.4。</p>
 <p><strong>怎么算/怎么测</strong>：固定一组文本，让模型逐位置预测下一个词，对正确词的概率取负对数平均。本项目工具：<code>tools/eval_val_baseline.py</code>（token 加权平均）与训练内验证（固定 50 批次）。注意本项目 SFT 只在「助手回答」的 token 上计损。</p>

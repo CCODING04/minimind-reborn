@@ -263,11 +263,11 @@ footer {
 <header class="hero">
   <h1>报告主线 · minimind_reborn</h1>
   <p class="sub">七份报告按实验顺序串联：每份回答一个问题，又引出下一个问题——从「把研究代码变成训练项目」走到「长上下文与多轮对话的根因修复」</p>
-  <div class="meta"><span>2026-09-24 → 09-30</span><span>6 份报告 · 1 条主线</span><span>全部结论带实测数字</span></div>
+  <div class="meta"><span>2026-09-24 → 10-02</span><span>7 份报告 · 1 条主线</span><span>全部结论带实测数字</span></div>
 </header>
 <div class="layout">
 <nav class="toc" aria-label="目录">
-  <div class="toc-title">七个章节</div>
+  <div class="toc-title">八个章节</div>
   <a href="#c1">① 重构：能不能可靠地训练</a>
   <a href="#c2">② 加固：全量训练跑得稳吗</a>
   <a href="#c3">③ 体检：模型对话能力如何</a>
@@ -276,12 +276,12 @@ footer {
   <a href="#c6">⑤½ 性能插曲：训练慢与隐藏 bug</a>
   <a href="#next">⑥ 档二：已完成（A 75%/C 0.086）</a>
   <a href="#gloss">术语速查</a>
-  <a href="model_features_compare.html" style="color:var(--accent)">⑦ 特征对比分析（新）</a>
+  <a href="model_features_compare.html" style="color:var(--accent)">⑦ 特征对比分析</a>
 </nav>
 <main class="content">
 
 <h2 id="top" style="margin-top:0">这个项目在做什么</h2>
-<p>把开源的迷你中文语言模型项目 minimind（64M 参数）从一份「跑通一次就扔的研究脚本」重构成一个<strong>可靠、可复现、可迭代的训练项目</strong>（minimind_reborn），然后沿着一条真实的改进循环走下去：<strong>训练 → 测出问题 → 归因到数据 → 修数据管线 → 重训 → 复测验证</strong>。下面七个章节就是这个循环的完整记录，每份报告开头都标注了自己在主线中的位置。</p>
+<p>把开源的迷你中文语言模型项目 minimind（64M 参数）从一份「跑通一次就扔的研究脚本」重构成一个<strong>可靠、可复现、可迭代的训练项目</strong>（minimind_reborn），然后沿着一条真实的改进循环走下去：<strong>训练 → 测出问题 → 归因到数据 → 修数据管线 → 重训 → 复测验证</strong>。下面八个章节就是这个循环的完整记录，每份报告开头都标注了自己在主线中的位置。</p>
 <div class="timeline">
 <a href="#c1">① 09-24 重构</a>
 <a href="#c2">② 09-25 加固</a>
@@ -289,7 +289,7 @@ footer {
 <a href="#c4">④ 09-27 数据归因</a>
 <a href="#c5">⑤ 09-28~30 修复与重训</a>
 <a href="#c6">⑤½ 09-29 性能插曲</a>
-<a href="#next">⑥ 档二（待执行）</a>
+<a href="#next">⑥ 档二（已完成）</a>
 </div>
 
 <div class="chapter" id="c1">
@@ -374,7 +374,7 @@ footer {
 
 </main>
 </div>
-<footer>生成于 2026-09-30 · 最近更新 2026-10-02 · minimind_reborn · <a href="model_features_compare.html">最新：特征对比分析</a> · <a href="retrain_plan.html">重训计划</a></footer>
+<footer>生成于 2026-09-30 · 最近更新 2026-10-04 · minimind_reborn · <a href="model_features_compare.html">最新：特征对比分析</a> · <a href="retrain_plan.html">重训计划</a></footer>
 <script>
 (function() {
   const links = Array.from(document.querySelectorAll('nav.toc a'));
