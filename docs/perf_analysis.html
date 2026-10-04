@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SFT@1536 吞吐瓶颈与 LR 调度问题：分析与修复计划（已复审，P1a/P2/P3 已执行）</title>
+<style>
+pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}/*!
+  Theme: GitHub
+  Description: Light theme as seen on github.com
+  Author: github.com
+  Maintainer: @Hirse
+  Updated: 2021-05-15
+
+  Outdated base version: https://github.com/primer/github-syntax-light
+  Current colors taken from GitHub's CSS
+*/.hljs{color:#24292e;background:#fff}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}.hljs-built_in,.hljs-symbol{color:#e36209}.hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}.hljs-subst{color:#24292e}.hljs-section{color:#005cc5;font-weight:700}.hljs-bullet{color:#735c0f}.hljs-emphasis{color:#24292e;font-style:italic}.hljs-strong{color:#24292e;font-weight:700}.hljs-addition{color:#22863a;background-color:#f0fff4}.hljs-deletion{color:#b31d28;background-color:#ffeef0}
+/* ===== GitHub Light (Primer) 风格 ===== */
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --bg-inset: #eff2f5;
+  --border: #d1d9e0;
+  --border-muted: #d8dee4;
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --fg-subtle: #6e7781;
+  --accent: #0969da;
+  --success: #1a7f37;
+  --attention: #9a6700;
+  --danger: #cf222e;
+  --code-bg: #f6f8fa;
+  --inline-code-bg: rgba(129, 139, 152, 0.16);
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial,
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+          "Courier New", "PingFang SC", "Microsoft YaHei", monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ===== 顶部横幅 ===== */
+.hero {
+  background: linear-gradient(180deg, #f6f8fa 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 48px 24px 40px;
+  text-align: center;
+}
+.hero h1 { font-size: 30px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.5px; }
+.hero p.sub { color: var(--fg-muted); margin: 0 auto 16px; max-width: 760px; font-size: 16px; }
+.hero .meta {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.hero .meta span {
+  background: var(--bg-subtle); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 12px;
+}
+
+/* ===== 布局：左侧目录 + 右侧正文 ===== */
+.layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 40px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 24px 96px;
+}
+nav.toc {
+  position: sticky; top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 13px;
+}
+nav.toc .toc-title {
+  font-weight: 600; color: var(--fg); margin-bottom: 8px;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+}
+nav.toc a {
+  display: block; color: var(--fg-muted); text-decoration: none;
+  padding: 4px 10px; border-left: 2px solid transparent; line-height: 1.5;
+  border-radius: 0 6px 6px 0;
+}
+nav.toc a:hover { color: var(--fg); background: var(--bg-subtle); }
+nav.toc a.lvl2 { padding-left: 24px; }
+nav.toc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
+
+main.content { max-width: 1012px; }
+
+/* ===== GitHub markdown 元素 ===== */
+.content h2 {
+  font-size: 24px; font-weight: 600; margin: 48px 0 16px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  letter-spacing: -0.3px;
+}
+.content h2 .sec-no {
+  color: var(--fg-subtle); font-weight: 500; font-family: var(--mono); font-size: 18px;
+  margin-right: 8px;
+}
+.content h3 { font-size: 19px; font-weight: 600; margin: 32px 0 12px; }
+.content h4 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+.content p { margin: 0 0 14px; }
+.content a { color: var(--accent); text-decoration: none; }
+.content a:hover { text-decoration: underline; }
+.content strong { font-weight: 600; }
+.content ul, .content ol { margin: 0 0 14px; padding-left: 26px; }
+.content li { margin: 4px 0; }
+.content li::marker { color: var(--fg-subtle); }
+.content hr { border: 0; border-top: 1px solid var(--border); margin: 36px 0; }
+
+blockquote {
+  margin: 0 0 14px; padding: 0 16px; color: var(--fg-muted);
+  border-left: 4px solid var(--border);
+}
+blockquote p { margin: 8px 0; }
+
+code {
+  font-family: var(--mono); font-size: 85%;
+  background: var(--inline-code-bg);
+  border-radius: 6px; padding: 0.18em 0.4em;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--border-muted);
+  border-radius: 8px; padding: 16px; overflow-x: auto;
+  margin: 0 0 16px; line-height: 1.5; font-size: 13.5px;
+}
+pre code {
+  background: transparent; padding: 0; border-radius: 0; font-size: 100%;
+  display: block; min-width: max-content;
+}
+.code-head {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-subtle); border: 1px solid var(--border-muted); border-bottom: 0;
+  border-radius: 8px 8px 0 0; padding: 6px 14px;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.code-head + pre { border-radius: 0 0 8px 8px; }
+.code-head .path { color: var(--accent); }
+
+/* 表格 */
+table { border-collapse: collapse; margin: 0 0 16px; width: 100%; font-size: 14px; }
+th, td { border: 1px solid var(--border); padding: 7px 13px; text-align: left; vertical-align: top; }
+th { background: var(--bg-subtle); font-weight: 600; }
+tr:nth-child(2n) td { background: #fbfcfd; }
+table code { white-space: nowrap; }
+
+/* 徽章 / 标签 */
+.badge {
+  display: inline-block; font-size: 12px; font-family: var(--mono);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 1px 10px; margin-right: 6px; color: var(--fg-muted);
+  background: var(--bg-subtle);
+}
+.badge.b-green { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.badge.b-amber { color: var(--attention); border-color: color-mix(in srgb, var(--attention) 40%, transparent); }
+.badge.b-red   { color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+
+/* 提示框（GitHub alert 样式） */
+.alert {
+  border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  background: var(--bg-subtle); border-radius: 8px;
+  padding: 12px 16px; margin: 0 0 16px; font-size: 14.5px;
+}
+.alert.tips { border-left-color: var(--success); }
+.alert.warn { border-left-color: var(--attention); }
+.alert .alert-title { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.alert p:last-child { margin-bottom: 0; }
+
+/* 卡片网格（项目概览） */
+.grid-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin: 0 0 20px;
+}
+.card {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px; background: var(--bg);
+}
+.card h4 { margin: 0 0 6px; font-size: 15.5px; display: flex; align-items: center; gap: 8px; }
+.card h4 .star { color: var(--attention); font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.card p { margin: 0; color: var(--fg-muted); font-size: 13.5px; line-height: 1.55; }
+.card .dim { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 2px 8px; border-radius: 6px; }
+
+/* 目录树 */
+.tree {
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  background: var(--code-bg); border: 1px solid var(--border-muted);
+  border-radius: 8px; padding: 14px 18px; overflow-x: auto;
+  white-space: pre; margin: 0 0 16px; color: var(--fg);
+}
+.tree .c { color: var(--fg-subtle); }
+.tree .d { color: var(--accent); font-weight: 600; }
+
+/* 过程时间线 */
+.timeline { border-left: 2px solid var(--border); margin: 0 0 16px 8px; padding-left: 24px; }
+.timeline .tl-item { position: relative; margin-bottom: 18px; }
+.timeline .tl-item::before {
+  content: ""; position: absolute; left: -30px; top: 6px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--accent);
+}
+.timeline .tl-item.done::before { background: var(--accent); }
+.timeline .tl-time { font-family: var(--mono); font-size: 12px; color: var(--fg-subtle); }
+.timeline .tl-body { font-size: 14.5px; }
+
+/* 小节导航返回 */
+.top-link { float: right; font-size: 12px; font-family: var(--mono); }
+
+footer {
+  border-top: 1px solid var(--border); color: var(--fg-subtle);
+  text-align: center; padding: 28px 16px; font-size: 13px;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.toc { display: none; }
+  .hero h1 { font-size: 24px; }
+}
+
+/* 打印 */
+@media print {
+  nav.toc, .top-link { display: none; }
+  .layout { display: block; padding: 0; }
+  pre { white-space: pre-wrap; }
+}
+
+</style>
+
+<style>
+.todo { list-style: none; padding-left: 0; }
+.todo li { padding: 3px 0 3px 4px; }
+.todo li::before { content: "☐ "; color: var(--fg-muted); }
+.todo li.done::before { content: "☑ "; color: var(--success); }
+.case { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 18px; margin: 14px 0; background: var(--bg-subtle); }
+.hold { border: 1px solid color-mix(in srgb, var(--attention) 45%, transparent); border-radius: 8px; padding: 10px 16px; margin: 14px 0; background: var(--bg); }
+</style>
+</head>
+<body>
+<header class="hero">
+  <h1>SFT@1536 吞吐瓶颈与 LR 调度问题：分析与修复计划</h1>
+  <p class="sub">为什么训练比计划慢一半：GPU 有一半时间在空转等数据（完整排查过程）· 顺带发现一个隐藏已久的学习率调度 bug · 两案均已修复并验收（问题一已执行并通过验收，深度重写项暂缓）</p>
+  <div class="meta"><span>2026-09-29</span><span>2 个问题 · 排查→定位→修复→验收</span><span>修复后吞吐翻倍</span><span>离线单文件</span></div>
+</header>
+<div style="max-width:1012px;margin:0 auto;padding:14px 24px 0;font-size:13.5px;">
+<div style="border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;background:var(--bg-subtle);padding:10px 16px;display:flex;gap:6px 18px;flex-wrap:wrap;align-items:baseline;">
+<span style="color:var(--fg-subtle);font-family:var(--mono);font-size:12px;">主线位置 ⑤½/⑥（与⑤的阶段 2 交织）</span>
+<span>← 上一份 <a href="retrain_plan.html">重训计划</a>：阶段 2 训练启动后发现比计划慢一半</span>
+<span><strong>本报告回答：GPU 为什么一半时间在空转？学习率为什么退火不到位？</strong></span>
+<span>引出 → 两案修复并验收后续训（结论已回写重训计划 §8）</span>
+</div>
+</div>
+
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <div class="toc-title">目录</div>
+  <a href="#s1">01 摘要</a>
+  <a href="#s2">02 现象与证据</a>
+  <a href="#s3">03 根因分析：吞吐瓶颈</a>
+  <a href="#s4">04 顺带发现：LR 调度 bug</a>
+  <a href="#s5">05 修复方案（P1-P4）</a>
+  <a href="#s6">06 当前 run 处置决策</a>
+  <a href="#s7">07 资料对照</a>
+  <a href="#s8">08 待执行清单</a>
+</nav>
+<main class="content">
+
+<h2 id="s1"><span class="sec-no">01</span>摘要</h2>
+<p>重训计划阶段 2（SFT@1536 全量训练，runs/sft_full_lc/20260929_004524，双卡 DDP）运行中期暴露两个问题，本报告完成调查、定位与方案设计，<strong>按决定：当前训练继续跑完、代码暂不修改，本报告仅留档</strong>。</p>
+<div class="case">
+<p><strong>问题一：数据管线喂不饱 GPU</strong>——显卡 0 号间歇完全空转（功耗在 73W↔352W 之间猛跳）、1 号恒定满载（那是在通信里空等慢的那张卡）、算力利用率（MFU，实际有效计算占理论峰值的比例）只有 10-15%、瞬时速度 53K-138K 字/秒剧烈波动。根源：<strong>单条训练样本的编码偶尔极慢，而预取缓冲太小兜不住</strong>——超长的对话样本在做「整轮保留」适配时要把全文重新分词 5-20 多次，最极端的样本（66,977 字）单条编码就要几秒；缓冲里只有 16 个批次，被一条慢样本拖住后 GPU 只能干等。预计总时长 ~40h，超出计划（26h）约 55%。</p>
+</div>
+<div class="case">
+<p><strong>案 B（调查顺带发现）：LR 余弦退火分母双倍 bug</strong>——<code>trainer.py:213</code> 的 <code>full_iters</code> 未除以 world_size，DDP 下每 rank 实际迭代数只有它的一半，导致学习率余弦退火的进度分母是实际步数的 <strong>2 倍</strong>——训练结束时学习率退不到预期的下限 1e-6（此句的终值 5.5e-6 后经复审修正为 2.32e-6，见 §04.25）。已用日志数字反推验证（见 §04）<strong>；9 月 25 日的上次全量 SFT 同样受此影响（非本次新引入）</strong>。</p>
+</div>
+<p>修复方案分四层（P1 对症主因 / P2 管线参数 / P3 LR bug / P4 验证流程），均已设计到改动点与验收断言级别，列入 §08 待执行清单——<strong>暂缓执行</strong>，待当前训练完成或另行批准后排期。</p>
+
+<h2 id="s2"><span class="sec-no">02</span>现象与证据</h2>
+<h3>2.1 GPU 侧：典型的「等数据」特征</h3>
+<p>12 秒内 6 次连续采样（训练日志同时段仍在正常推进，排除卡死）：</p>
+<table>
+<tr><th>样本</th><th>GPU0 util</th><th>GPU0 功耗</th><th>GPU1 util</th><th>GPU1 功耗</th></tr>
+<tr><td>1</td><td>0%</td><td>87.7W</td><td>100%</td><td>87.2W</td></tr>
+<tr><td>2</td><td>0%</td><td>73.4W</td><td>100%</td><td>86.9W</td></tr>
+<tr><td>3</td><td>0%</td><td>164.2W</td><td>100%</td><td>200.8W</td></tr>
+<tr><td>4</td><td>99%</td><td>352.2W</td><td>99%</td><td>286.0W</td></tr>
+<tr><td>5</td><td>0%</td><td>216.8W</td><td>99%</td><td>220.9W</td></tr>
+<tr><td>6</td><td>0%</td><td>116.8W</td><td>100%</td><td>87.4W</td></tr>
+</table>
+<p>解读：GPU1 的恒 100% 不是在干活——双卡训练要求每步两端汇合，先算完的那张卡会在通信环节空转等慢的一张（功耗并不高）；被数据卡住的那个 rank（GPU0=rank0，快卡 4090 且兼任日志/保存）才真正 0% 空闲。<strong>GPU 利用率在 0% 与 100% 之间振荡，是数据管线喂不满的标准症状</strong>（外部资料佐证见 §07）。</p>
+<h3>2.2 日志侧：步时分布证明「GPU 本身可达水位」</h3>
+<p>对本次 run 前 1491 个日志窗口的量化：mean 245ms/micro-step、median 239ms、p10 184ms、p90 310ms、<strong>min 134ms</strong>。最好的窗口 134ms/step 对应 183K tok/s（MFU≈21%）——说明 GPU + 主循环本身能达到接近预期的水位，<strong>中位数以上多出的 ~110ms/step 全是间歇性停顿</strong>。吞吐日志的 53K-138K 波动与之自洽。</p>
+<h3>2.3 系统侧：CPU 大量空闲反而印证「延迟瓶颈」</h3>
+<p>CPU load 仅 4.4/32 线程、内存余量 14G、温度远低于降频线（54-64°C / 42-51°C，风扇 47%/30%——<strong>热与负载全部在正常区间，长跑无风险</strong>）。若瓶颈是 CPU 算力不足，load 应接近饱和；「CPU 大量空闲 + GPU 间歇空转」的组合指向<strong>「前一批没编完、后面全排队」的延迟问题</strong>，而不是 CPU 算力不够的吞吐问题。</p>
+<h3>2.4 tok/s 口径说明</h3>
+<p>日志 tok/s 的分母是填充口径（bs × world × max_seq_len = 8×2×1536 = 24,576/micro-step，<code>trainer.py:262-264</code>），与 MFU 公式自洽。100K tok/s ≡ 245ms/step。本报告所有吞吐数字均为此口径。</p>
+
+<h2 id="s3"><span class="sec-no">03</span>根因分析：吞吐瓶颈（案 A）</h2>
+<h3>3.1 主因：SFT 单样本编码的重复 tokenize 与重尾</h3>
+<p><code>encode_sft_sample</code>（<code>data/datasets.py:195-243</code>）的调用链存在三类浪费：</p>
+<table>
+<tr><th>#</th><th>问题</th><th>代码位置</th><th>量化影响</th></tr>
+<tr><td>①</td><td><strong>公共路径无条件 tokenize ×2</strong>：L216 全文渲染+tokenize 得 <code>full_ids</code>，L224 无论是否做过轮次适配都重新「渲染+tokenize」一遍——81.3% 未超预算样本的成本被白白翻倍</td><td><code>datasets.py:216 / 224</code></td><td>常态样本成本 ×2</td></tr>
+<tr><td>②</td><td><strong>轮次适配的迭代式全文重编码</strong>：<code>_fit_turns</code>（L144-192）中每个 <code>fits()</code> = 1 次 <code>apply_chat_template</code> + 1 次全文 tokenize；丢轮用二分搜索（ceil(log2(max_drop)) 次）；user 内容截短循环<strong>每圈只砍 20% 字符却重新全文渲染+tokenize</strong>（L189）</td><td><code>datasets.py:144-192</code></td><td>超预算样本（18.7%）单次编码 5-20+ 次全文渲染+tokenize；20 万字符级 user 内容要 15-20 圈</td></tr>
+<tr><td>③</td><td><strong>渲染本身不便宜</strong>：chat template 是 3,895 字符的 Qwen 式 jinja（含 tools 分支+双向消息循环），逐条调用（非批量）</td><td><code>datasets.py:122-141</code></td><td>每样本至少 2 次、超预算样本 5-20+ 次</td></tr>
+</table>
+<p>叠加数据的<strong>重尾</strong>（len_profile 实测：渲染长度 mean 1219 / p90 2322 / <strong>p99 7900 / max 66,977</strong> token），单条 <code>__getitem__</code> 可达秒级；一个 batch（8 样本在同一 worker 内串行编码）含一条超长样本，整批交付延迟 1-6 秒。</p>
+<h3>3.2 放大器：预取缓冲太小，偶发的慢样本直接让 GPU 空等</h3>
+<ul>
+<li>DataLoader 参数（<code>utils/seed.py:53-58</code>）：<code>pin_memory=True</code>、<code>num_workers=8</code>（启动命令覆盖，yaml 里是 4），但 <code>prefetch_factor</code> 默认 2、<code>persistent_workers</code> 默认 False——每 rank 缓冲仅 <strong>16 个 batch</strong>（约 2-4 秒计算量）；</li>
+<li><code>CUDAPrefetcher</code>（<code>prefetch.py:15-52</code>，无条件启用）只负责把已就绪的数据从内存搬上显卡（毫秒级，不是瓶颈），且缓冲深度只有 1、取数时会原地等编码完成——帮不了编码慢的问题；</li>
+<li>主线程同步点：SFT 的 <code>compute_loss</code> 内部 <code>.item()</code>（<code>training/sft/workflow.py:22</code>）+ 训练循环 <code>running_loss += loss.item()</code>（<code>trainer.py:260</code>）——worker 队列一旦见底，等待时间全额计入步时；</li>
+<li>数据加载严格按顺序交付：第 N 批没编完，第 N+1 批（哪怕早已编好）也不能先上——<strong>前面卡住、后面全排队</strong>。</li>
+</ul>
+<h3>3.3 排除项（已逐一核实）</h3>
+<table>
+<tr><th>嫌疑</th><th>核实结果</th><th>证据</th></tr>
+<tr><td>checkpoint 保存阻塞 rank0</td><td>排除：占比 ~0.15%</td><td>74 次保存实测 0.69-0.79s/次，间隔 2000 步 ≈ 8 分钟</td></tr>
+<tr><td>训练中周期评估</td><td>排除：未触发</td><td>实际配置 <code>eval_interval_steps=0</code>（仅 epoch 末评估）</td></tr>
+<tr><td>eval 预载 load_range</td><td>排除：训练路径无调用</td><td>全仓 grep 唯一定义在 datasets.py:106，无调用点</td></tr>
+<tr><td>C3 零损失重映射重复编码</td><td>基本排除：~1% 额外编码</td><td>zero_loss 率占全体 ~0.8%，量级小</td></tr>
+<tr><td>DDP no_sync 回归</td><td>排除：在位</td><td><code>trainer.py:239-248</code>，累积内 no_sync、末步同步</td></tr>
+<tr><td>tok/s 口径错误</td><td>排除：自洽</td><td>padded 口径与 MFU 公式一致（§2.4）</td></tr>
+</table>
+
+<h2 id="s4"><span class="sec-no">04</span>顺带发现：LR 余弦退火分母双倍 bug（案 B）</h2>
+<h3>4.1 机制</h3>
+<p><code>trainer.py:213</code>：</p>
+<pre><code>full_iters = (len(self.train_ds) + t.batch_size - 1) // t.batch_size</code></pre>
+<p><code>len(train_ds)</code> 是全量样本数，但 DDP 下 DistributedSampler 给每 rank 只分配一半样本，<strong>每 rank 实际迭代数 ≈ full_iters / 2</strong>。而 LR 调度用它当分母：</p>
+<pre><code>total_micro = cfg.train.epochs * full_iters          # = 2 × 592,046 = 1,184,092
+global_micro = epoch * full_iters + offset            # 2 epochs 实际只走到 ≈ 592,046</code></pre>
+<p>余弦退火的进度 <code>global_micro / total_micro</code> 永远只走到 <strong>50%</strong>。</p>
+<h3>4.2 日志数字反推验证（完全吻合）</h3>
+<p>当前进度 146,500 步、实测 lr = 9.66e-6。按错误分母计算：进度 = 146,500 / 1,184,092 = 12.4%；cosine 半程公式 lr = 1e-6 + 9e-6 × (1+cos(π×0.124))/2 = <strong>9.66e-6</strong> —— 与日志一致，bug 确认。</p>
+<h3>4.25 复审修正（2026-09-29 13:00，独立复核后追加）</h3>
+<p><strong>bug 本身经独立验证成立</strong>（暂停点 lr=9.63e-6 与带 bug 分母的公式预测 9.633e-6 完全吻合；按正确分母应为 8.59e-6，对不上）。但本报告 §04 的<strong>终值推算有误</strong>：「2 epochs 跑完时 LR 退到半程 ~5.5e-6」忽略了 epoch 1 的 global_macro 从 full_iters 起步（<code>global_micro = epoch×full_iters + offset</code>）——实际结束时进度为 75%（非 50%），<strong>终值 ≈2.32e-6</strong>，比本报告原估计的更接近 1e-6 下限，损害轻于原文描述。已用 <code>test_old_bug_signature_locked</code> 单测锁定该签名。另：重训计划会话此前按日志 ETA 汇报「剩余 9.5-10h」同样有误（ETA 只计当前 epoch 剩余），实际剩余 ~29h。</p>
+<h3>4.3 影响评估</h3>
+<ul>
+<li><strong>本 run</strong>：2 epochs 结束时 LR 停在 ~2.32e-6（而非 1e-6 下限；初稿误写 5.5e-6，见 §04.25），退火末端（通常对应质量最好的训练阶段）缺失；</li>
+<li><strong>历史影响</strong>：9 月 25 日的上次全量 SFT（sft_full，同样双卡 DDP + 同一代码）受同样影响——此前未被发现；pretrain 同代码路径，上次 pretrain_full（2×4090）大概率同受影响（未逐一核验，修复时以单测锁定）；</li>
+<li>单卡训练不受影响（world_size=1 时口径恰好正确），这也是 mini 时代（部分单卡验证）未暴露的原因之一。</li>
+</ul>
+
+<h2 id="s5"><span class="sec-no">05</span>修复方案（P1-P4，留档设计，暂不执行）</h2>
+<h3>P1（对症主因）：编码路径整体移到 token 域</h3>
+<ul>
+<li><strong>P1a 复用 full_ids</strong>：未做轮次适配（81.3% 样本）时直接使用 L216 的 <code>full_ids</code>，跳过 L224 的重复渲染+tokenize——公共路径成本立即减半，改动 ~5 行；</li>
+<li><strong>P1b 重写 <code>_fit_turns</code> 为「一次 tokenize + 切片」</strong>：整段 tokenize 一次得到 full_ids，用现有 <code>_match_at</code> 在 token 序列中定位各轮边界（轮次以 <code>&lt;|im_start|&gt;</code> 等特殊 token 分隔，<strong>特殊 token 是天然 BPE 边界，从整段结果中定位边界与整段 tokenize 零等价性风险</strong>），之后丢轮 = 列表切片、user 截短 = token 域左截（按超出 token 数 × 平均字节/token 一次截足）——超预算样本从 5-20+ 次渲染+tokenize 降为 <strong>1 次</strong>；</li>
+<li><strong>正确性保障</strong>：等价性单测——修复前后同 seed、同样本逐 token 一致（含 input_ids / labels / spans 三对齐）；</li>
+<li>预期：整体 encode CPU 成本下降 <strong>60-70%</strong>（81% 样本 ×2→×1，18.7% 样本 ×5-20→×1）。</li>
+</ul>
+<h3>P2（管线参数，放大器消除）</h3>
+<ul>
+<li><code>prefetch_factor=4</code>、<code>persistent_workers=True</code>（<code>utils/seed.py</code> 的 loader 参数）——缓冲从 16 batch 加深到 64 batch，吸收重尾；</li>
+<li><code>num_workers</code> 8→16（CPU load 仅 4.4/32，大量余量）；</li>
+<li><code>compute_loss</code> 去 <code>.item()</code>（改 <code>loss.detach()</code>，日志窗口再同步物化）——消除每步两次主线程同步点。</li>
+</ul>
+<h3>P3（LR bug）</h3>
+<ul>
+<li><code>full_iters</code> 按 <code>dist.get_world_size()</code> 折算（或 total_micro 改用 <code>iters × epochs</code> 实际口径）；</li>
+<li>DDP 语义单测：模拟 world_size=2 的调度序列，断言 2 epochs 结束时 LR = 下限值 lr×min_ratio；</li>
+<li>历史注记：9/25 的 sft_full（及大概率 pretrain_full）同受影响，对比实验结论需考虑此因素。</li>
+</ul>
+<h3>P4（验证流程，动手门槛）</h3>
+<ul>
+<li>全量单测绿 → 等价性单测绿 → 60 步冒烟吞吐对照：<strong>≥150K tok/s（当前 ~100K）才允许动任何在跑训练</strong>；</li>
+<li>冒烟同时断言：LR 数值与修复后调度公式一致。</li>
+</ul>
+<h3>预期综合收益</h3>
+<p>P1+P2 落地后 SFT@1536 吞吐预期从 ~100K 恢复到 150-183K tok/s（最好窗口已证明 GPU 可达 183K），单次 SFT 时长从 ~40h 压回 <strong>22-27h</strong>（计划口径内）。对档二链路（续训 + 第二次 SFT + 可能的决策点触发的再训）累计可省 <strong>15-30h GPU</strong>。</p>
+
+<h2 id="s6"><span class="sec-no">06</span>当前 run 处置决策记录</h2>
+<div class="hold">
+<p><strong>时间线更正（2026-09-29 13:45 追加）</strong>：本报告成文后，实际走向与本节"继续跑完"的决定不同——① 11:11 训练被用户指令暂停（检查点 step 152,000 完好）；② 13:00-13:35 完成 P3+P1a+P2 修复并通过 P4 验收（见 §08 勾选）；③ 13:39 从检查点续训，吞吐 185-213K tok/s（较修复前均值翻倍）、lr 一次性切到修复后的正确值 8.60e-6（向下 11%）、剩余约 16h（较不修复省约 13h）。原决定表保留如下供追溯。</p>
+<p><del><strong>已决定（2026-09-29）：当前训练继续跑完，代码暂不修改，本报告留档。</strong>当前 run 预计 9 月 30 日 ~16:45 完成（25% 进度时测算，剩余 ~30h）。</del></p>
+</div>
+<table>
+<tr><th>选项</th><th>收益</th><th>代价/风险</th><th>判定</th></tr>
+<tr><td>修复验证后 kill + checkpoint 续训</td><td>剩余 ~30h→~15h；LR 正确退火到 1e-6（续训点 LR 9.66e-6→8.4e-6 向下跳变，幅度可接受）</td><td>P1b 重写需等价性单测先行；kill 续训有 0.67% 轨迹偏差（readiness 实测）</td><td>未采纳（用户选择暂不动）</td></tr>
+<tr><td><strong>跑完不动（已选）</strong></td><td>零风险零损失；LR 半程终止与上次全量 SFT 一致，非灾难</td><td>多等 ~15h；本次模型退火不完整</td><td><strong>采纳</strong></td></tr>
+<tr><td>修复后从头重跑</td><td>最干净</td><td>浪费已跑 25%（~7.4h GPU）</td><td>未采纳（仅当等价性单测失败才值得）</td></tr>
+</table>
+<p>P1-P4 修复的受益者：档二链路（续训 SFT 段）、决策点 1 若触发的多轮上采样再训、以及一切未来 SFT/pretrain。</p>
+
+<h2 id="s7"><span class="sec-no">07</span>资料对照</h2>
+<h3>7.1 内部资料适用性修正</h3>
+<p><code>docs/pretrain_readiness.md</code> §2「2 个 worker 即饱和、数据侧上限 12×、瓶颈纯在 GPU」的结论<strong>不适用于本场景</strong>：该实测用的是 PretrainDataset + pretrain_t2t_mini + seq 340 的轻路径（单次 tokenize + 截断，无 chat template 渲染、无轮次适配、无 Python span 扫描、无重尾）。SFT@1536 的单样本编码成本高一个数量级以上且带重尾（p99=7900/max=66,977），「2 workers 饱和」不可外推。<strong>建议 readiness 文档补一条适用范围注记</strong>（列入 §08 待执行清单 P5）。</p>
+<h3>7.2 外部佐证</h3>
+<ul>
+<li>GPU 利用率在 0% 与 100% 之间振荡 = 数据管线喂不满的标准症状，第一调节杠杆是 DataLoader（io.net《GPU Utilization Optimization》）；</li>
+<li><code>persistent_workers=True</code> 避免每 epoch 重建 worker、<code>prefetch_factor</code> 在 I/O/编码尾延迟场景上调至 4-8+、<code>pin_memory=True</code> 近零成本加速 H2D——多来源共识（pierce.dev《Debugging Slow PyTorch Training》实测了 prefetch_factor 高至 200 的组合；stevengong.co《PyTorch Performance Tuning》"keep the GPU fed"）；</li>
+<li>DDP 场景下 prefetch 与共享内存（/dev/shm）联动调优（PyTorch GitHub issue #10670）。</li>
+</ul>
+
+<h2 id="s8"><span class="sec-no">08</span>执行清单（2026-09-29 更新：P1a/P2/P3 已完成）</h2>
+<p><strong>复审注记</strong>：P1c 原设计「修复前后逐 token 一致」过强——P1b 把 user 左截从字符域（每圈砍 20%）改 token 域（一次截足），切点必然不同，逐 token 断言必然失败；等价性验收应改为锁定 <strong>span 语义等价</strong>（无残段 / 丢最旧轮 / 末轮完整 / system 保留）。</p>
+<ul class="todo">
+<li class="done">P1a <code>encode_sft_sample</code> 未超预算路径复用 <code>full_ids</code>（datasets.py:216/224，~5 行）——2026-09-29 完成</li>
+<li class="doing">P1b <code>_fit_turns</code> 重写为「整段 tokenize 一次 + <code>_match_at</code> 轮边界定位 + token 域切片/左截」（datasets.py:144-192，~50 行 + 重写）</li>
+<li class="doing">P1c 等价性单测：修复前后同 seed 逐 token 一致（input_ids/labels/spans 三对齐）</li>
+<li class="done">P2a DataLoader 加 <code>prefetch_factor=4</code>、<code>persistent_workers=True</code>（utils/seed.py:53-58）</li>
+<li class="done">P2b <code>num_workers</code> 8→16（启动参数或 yaml）</li>
+<li class="doing">P2c <code>compute_loss</code> 去 <code>.item()</code>（sft/workflow.py:22 + trainer.py:260，窗口内同步物化）</li>
+<li class="done">P3a <code>full_iters</code> 按 world_size 折算（抽为 per_rank_full_iters 纯函数）——2026-09-29 完成</li>
+<li class="done">P3b DDP 语义单测：2ep 末 LR = 地板断言（tests/test_training/test_lr_schedule.py，5 个用例含 bug 签名锁）——2026-09-29 完成</li>
+<li>P3c 历史影响注记：9/25 sft_full（及 pretrain_full）同 bug，对比结论需标注</li>
+<li class="done">P4 验证门槛：82 测试全绿 + 冒烟 213K tok/s（门槛 150K）+ LR 正确退火到 1e-6 下限——2026-09-29 通过</li>
+<li>P5 readiness §2 补适用范围注记（pretrain 轻路径结论不外推 SFT）</li>
+</ul>
+
+<ul>
+<li>关联报告：<a href="retrain_plan.html">重训优化计划（进行中）</a> · <a href="dataeng.html">LLM 数据工程实测</a> · <a href="hardening.html">修复与加固实录</a> · <a href="reports.html">报告索引</a></li>
+<li>关联训练：<code>runs/sft_full_lc/20260929_004524</code>（阶段 2 档一 SFT，2026-09-29 00:45 启动，预计 09-30 完成）</li>
+</ul>
+
+</main>
+</div>
+<footer>生成于 2026-09-29 · 最近更新 2026-09-29 13:45（复审修正 + P1a/P2/P3 执行完毕）· minimind_reborn</footer>
+<script>
+(function() {
+  const links = Array.from(document.querySelectorAll('nav.toc a'));
+  const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  function update() {
+    let cur = 0;
+    const y = window.scrollY + 90;
+    targets.forEach((t, i) => { if (t.offsetTop <= y) cur = i; });
+    links.forEach((a, i) => a.classList.toggle('active', i === cur));
+  }
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
+</body>
+</html>

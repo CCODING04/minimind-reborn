@@ -1,0 +1,71 @@
+{
+  "dataset": "sft_t2t_mt",
+  "file": "/home/admin02/Code/WorkSpace/minimind-reproduce/dataset/sft_t2t_mt.jsonl",
+  "file_bytes": 14485986210,
+  "total_lines": 5409432,
+  "sampled": 100000,
+  "sample_seed": 42,
+  "kind": "sft",
+  "fields": [
+    "conversations"
+  ],
+  "turns_distribution": {
+    "2": 76087,
+    "3": 3557,
+    "4": 5288,
+    "5": 3792,
+    "6": 2719,
+    "7": 573,
+    "8": 2096,
+    "9": 244,
+    "10": 1375,
+    "11": 673,
+    "12": 737,
+    "13": 388,
+    "14": 431,
+    "15": 367,
+    "16": 486,
+    "17": 363,
+    "18": 12,
+    "19": 168,
+    "20": 6,
+    "21": 522,
+    "22": 4,
+    "23": 60,
+    "25": 30,
+    "27": 4,
+    "29": 7,
+    "31": 8,
+    "35": 1,
+    "45": 1,
+    "79": 1
+  },
+  "multi_turn_rate": 0.2391,
+  "user_char_len": {
+    "n": 146097,
+    "p10": 13,
+    "p50": 40,
+    "p90": 260,
+    "p99": 1130,
+    "max": 33014,
+    "mean": 115.9
+  },
+  "response_char_len": {
+    "n": 154662,
+    "p10": 30,
+    "p50": 449,
+    "p90": 1544,
+    "p99": 3067,
+    "max": 18182,
+    "mean": 624.7
+  },
+  "response_exact_dup_rate": 0.0785,
+  "user_prefix64_dup_rate": 0.1215,
+  "response_3gram_rep_mean": 0.187,
+  "response_lang_mix": {
+    "en-dominant": 52278,
+    "zh-dominant": 88272,
+    "mixed": 5156,
+    "other": 8956
+  }
+}

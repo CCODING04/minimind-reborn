@@ -1,0 +1,13 @@
+校准：中位 1.31 字符/token；粗筛阈值 701 字符（0.7× 保召回）
+粗筛候选 725811 行，池内 tokenize 精筛 …
+{
+  "source_lines": 8468827,
+  "coarse_candidates": 725811,
+  "long_selected": 329965,
+  "long_chars": 640703247,
+  "replay_short": 109988,
+  "output_rows": 439953,
+  "output": "/home/admin02/Code/WorkSpace/minimind-reproduce/dataset/pretrain_longctx.jsonl",
+  "coarse_char_threshold": 701,
+  "long_precision_check": 1.0
+}

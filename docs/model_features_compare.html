@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>模型特征说明与两代模型对比分析</title>
+<style>
+pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}/*!
+  Theme: GitHub
+  Description: Light theme as seen on github.com
+  Author: github.com
+  Maintainer: @Hirse
+  Updated: 2021-05-15
+
+  Outdated base version: https://github.com/primer/github-syntax-light
+  Current colors taken from GitHub's CSS
+*/.hljs{color:#24292e;background:#fff}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}.hljs-built_in,.hljs-symbol{color:#e36209}.hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}.hljs-subst{color:#24292e}.hljs-section{color:#005cc5;font-weight:700}.hljs-bullet{color:#735c0f}.hljs-emphasis{color:#24292e;font-style:italic}.hljs-strong{color:#24292e;font-weight:700}.hljs-addition{color:#22863a;background-color:#f0fff4}.hljs-deletion{color:#b31d28;background-color:#ffeef0}
+/* ===== GitHub Light (Primer) 风格 ===== */
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --bg-inset: #eff2f5;
+  --border: #d1d9e0;
+  --border-muted: #d8dee4;
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --fg-subtle: #6e7781;
+  --accent: #0969da;
+  --success: #1a7f37;
+  --attention: #9a6700;
+  --danger: #cf222e;
+  --code-bg: #f6f8fa;
+  --inline-code-bg: rgba(129, 139, 152, 0.16);
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial,
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+          "Courier New", "PingFang SC", "Microsoft YaHei", monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ===== 顶部横幅 ===== */
+.hero {
+  background: linear-gradient(180deg, #f6f8fa 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 48px 24px 40px;
+  text-align: center;
+}
+.hero h1 { font-size: 30px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.5px; }
+.hero p.sub { color: var(--fg-muted); margin: 0 auto 16px; max-width: 760px; font-size: 16px; }
+.hero .meta {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.hero .meta span {
+  background: var(--bg-subtle); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 12px;
+}
+
+/* ===== 布局：左侧目录 + 右侧正文 ===== */
+.layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 40px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 24px 96px;
+}
+nav.toc {
+  position: sticky; top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 13px;
+}
+nav.toc .toc-title {
+  font-weight: 600; color: var(--fg); margin-bottom: 8px;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+}
+nav.toc a {
+  display: block; color: var(--fg-muted); text-decoration: none;
+  padding: 4px 10px; border-left: 2px solid transparent; line-height: 1.5;
+  border-radius: 0 6px 6px 0;
+}
+nav.toc a:hover { color: var(--fg); background: var(--bg-subtle); }
+nav.toc a.lvl2 { padding-left: 24px; }
+nav.toc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
+
+main.content { max-width: 1012px; }
+
+/* ===== GitHub markdown 元素 ===== */
+.content h2 {
+  font-size: 24px; font-weight: 600; margin: 48px 0 16px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  letter-spacing: -0.3px;
+}
+.content h2 .sec-no {
+  color: var(--fg-subtle); font-weight: 500; font-family: var(--mono); font-size: 18px;
+  margin-right: 8px;
+}
+.content h3 { font-size: 19px; font-weight: 600; margin: 32px 0 12px; }
+.content h4 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+.content p { margin: 0 0 14px; }
+.content a { color: var(--accent); text-decoration: none; }
+.content a:hover { text-decoration: underline; }
+.content strong { font-weight: 600; }
+.content ul, .content ol { margin: 0 0 14px; padding-left: 26px; }
+.content li { margin: 4px 0; }
+.content li::marker { color: var(--fg-subtle); }
+.content hr { border: 0; border-top: 1px solid var(--border); margin: 36px 0; }
+
+blockquote {
+  margin: 0 0 14px; padding: 0 16px; color: var(--fg-muted);
+  border-left: 4px solid var(--border);
+}
+blockquote p { margin: 8px 0; }
+
+code {
+  font-family: var(--mono); font-size: 85%;
+  background: var(--inline-code-bg);
+  border-radius: 6px; padding: 0.18em 0.4em;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--border-muted);
+  border-radius: 8px; padding: 16px; overflow-x: auto;
+  margin: 0 0 16px; line-height: 1.5; font-size: 13.5px;
+}
+pre code {
+  background: transparent; padding: 0; border-radius: 0; font-size: 100%;
+  display: block; min-width: max-content;
+}
+.code-head {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-subtle); border: 1px solid var(--border-muted); border-bottom: 0;
+  border-radius: 8px 8px 0 0; padding: 6px 14px;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.code-head + pre { border-radius: 0 0 8px 8px; }
+.code-head .path { color: var(--accent); }
+
+/* 表格 */
+table { border-collapse: collapse; margin: 0 0 16px; width: 100%; font-size: 14px; }
+th, td { border: 1px solid var(--border); padding: 7px 13px; text-align: left; vertical-align: top; }
+th { background: var(--bg-subtle); font-weight: 600; }
+tr:nth-child(2n) td { background: #fbfcfd; }
+table code { white-space: nowrap; }
+
+/* 徽章 / 标签 */
+.badge {
+  display: inline-block; font-size: 12px; font-family: var(--mono);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 1px 10px; margin-right: 6px; color: var(--fg-muted);
+  background: var(--bg-subtle);
+}
+.badge.b-green { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.badge.b-amber { color: var(--attention); border-color: color-mix(in srgb, var(--attention) 40%, transparent); }
+.badge.b-red   { color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+
+/* 提示框（GitHub alert 样式） */
+.alert {
+  border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  background: var(--bg-subtle); border-radius: 8px;
+  padding: 12px 16px; margin: 0 0 16px; font-size: 14.5px;
+}
+.alert.tips { border-left-color: var(--success); }
+.alert.warn { border-left-color: var(--attention); }
+.alert .alert-title { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.alert p:last-child { margin-bottom: 0; }
+
+/* 卡片网格（项目概览） */
+.grid-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin: 0 0 20px;
+}
+.card {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px; background: var(--bg);
+}
+.card h4 { margin: 0 0 6px; font-size: 15.5px; display: flex; align-items: center; gap: 8px; }
+.card h4 .star { color: var(--attention); font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.card p { margin: 0; color: var(--fg-muted); font-size: 13.5px; line-height: 1.55; }
+.card .dim { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 2px 8px; border-radius: 6px; }
+
+/* 目录树 */
+.tree {
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  background: var(--code-bg); border: 1px solid var(--border-muted);
+  border-radius: 8px; padding: 14px 18px; overflow-x: auto;
+  white-space: pre; margin: 0 0 16px; color: var(--fg);
+}
+.tree .c { color: var(--fg-subtle); }
+.tree .d { color: var(--accent); font-weight: 600; }
+
+/* 过程时间线 */
+.timeline { border-left: 2px solid var(--border); margin: 0 0 16px 8px; padding-left: 24px; }
+.timeline .tl-item { position: relative; margin-bottom: 18px; }
+.timeline .tl-item::before {
+  content: ""; position: absolute; left: -30px; top: 6px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--accent);
+}
+.timeline .tl-item.done::before { background: var(--accent); }
+.timeline .tl-time { font-family: var(--mono); font-size: 12px; color: var(--fg-subtle); }
+.timeline .tl-body { font-size: 14.5px; }
+
+/* 小节导航返回 */
+.top-link { float: right; font-size: 12px; font-family: var(--mono); }
+
+footer {
+  border-top: 1px solid var(--border); color: var(--fg-subtle);
+  text-align: center; padding: 28px 16px; font-size: 13px;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.toc { display: none; }
+  .hero h1 { font-size: 24px; }
+}
+
+/* 打印 */
+@media print {
+  nav.toc, .top-link { display: none; }
+  .layout { display: block; padding: 0; }
+  pre { white-space: pre-wrap; }
+}
+
+</style>
+
+<style>
+/* ===== 本报告追加样式 ===== */
+.feat { border: 1px solid var(--border); border-radius: 10px; margin: 14px 0; background: var(--bg); }
+.feat > h3 { margin: 0; padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--bg-subtle); font-size: 15.5px; }
+.feat-body { padding: 6px 18px 12px; }
+.feat-body table { margin: 8px 0 4px; }
+.flow { margin: 18px 0; }
+.flow-row { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+.flow-node { border: 1.5px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 150px; flex: 1; background: var(--bg); }
+.flow-node .fn-title { font-weight: 600; font-size: 13.5px; color: var(--accent); }
+.flow-node ul { margin: 6px 0 0; padding-left: 16px; font-size: 12.5px; color: var(--fg-muted); }
+.flow-node ul li { margin: 2px 0; }
+.flow-arrow { display: flex; align-items: center; padding: 0 6px; color: var(--fg-subtle); font-size: 18px; }
+.flow-tag { display: inline-block; font-family: var(--mono); font-size: 11px; border-radius: 4px; padding: 1px 6px; margin: 2px 2px 0 0; }
+.t1 { background: #fff8e6; color: #9a6700; border: 1px solid #eedaaa; }
+.t2 { background: #eef7ee; color: #1a7f37; border: 1px solid #cde5cd; }
+.loopback { text-align: center; color: var(--attention); font-size: 13px; margin-top: 6px; }
+.delta-up { color: var(--success); font-weight: 600; }
+.delta-down { color: var(--danger); font-weight: 600; }
+.delta-flat { color: var(--fg-muted); }
+</style>
+</head>
+<body>
+<header class="hero">
+  <h1>模型特征说明与两代模型对比分析</h1>
+  <p class="sub">先讲清每个特征的意义、算法与测量方式，再用同一把尺子对比 era1 → 档一 → 档二三代模型——改进了什么、没改进什么、为什么；附实验修改流程图与结论驱动的下一步方案</p>
+  <div class="meta"><span>2026-10-02</span><span>10 个特征 · 3 代模型 · 2 轮改进</span><span>全部数字同口径实测</span><span>离线单文件</span></div>
+</header>
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <div class="toc-title">目录</div>
+  <a href="#sec1">01 特征字典</a>
+  <a href="#sec2">02 三代模型对比</a>
+  <a href="#sec3">03 数据处理流水</a>
+  <a href="#sec4">04 实验修改流程图</a>
+  <a href="#sec5">05 变化清单</a>
+  <a href="#sec6">06 进一步改进方案</a>
+</nav>
+<main class="content">
+
+<h2 id="sec1"><span class="sec-no">01</span>特征字典：每个特征是什么、怎么算、怎么测、怎么比</h2>
+<p>对比模型之前必须先讲清「尺子」。本章 10 个特征全部是本项目实际测过的，每个按统一四段式说明。<strong>总原则</strong>：特征对比只在「同一测量方式」（同评测集、同随机种子、同判定规则）下有意义——本项目全部评测固定 seed 42。</p>
+
+<div class="feat"><h3>1.1 交叉熵损失（CE loss）与困惑度（PPL）</h3><div class="feat-body">
+<p><strong>是什么</strong>：模型对文本的预测不确定度。CE = 每个 token 的 −log P(正确词) 的平均值；PPL = exp(CE)，直观含义是「平均每个位置等效于在多少个词里犹豫」。CE 2.0 ≈ PPL 7.4。</p>
+<p><strong>怎么算/怎么测</strong>：固定一组文本，让模型逐位置预测下一个词，对正确词的概率取负对数平均。本项目工具：<code>tools/eval_val_baseline.py</code>（token 加权平均）与训练内验证（固定 50 批次）。注意本项目 SFT 只在「助手回答」的 token 上计损。</p>
+<p><strong>怎么比</strong>：越低越好。<strong>陷阱（本项目踩过三次）</strong>：① 验证集切法不同不可比（旧尾切验证集被多轮对话富集，同模型同权重在旧/新验证集上分别是 2.04 / 1.23）；② 训练内验证带随机系统提示增强、逐批平均，与外部脚本的无增强、token 加权是两套口径（档一 1.2666 与档二 1.2677 不能直接比大小——两者验证集也不同，档二含 Belle 数据）；③ 跨能力域不可比（预训练与微调的损失基底不同）。<strong>正确用法</strong>：同一模型在两个验证集上比（揭示数据问题），或两个模型在同一验证集上比（揭示模型差异）。</p>
+</div></div>
+
+<div class="feat"><h3>1.2 跨轮记忆召回率（套件 A）</h3><div class="feat-body">
+<p><strong>是什么</strong>：多轮对话中「听过→记住→取回」链路的完整度。对话前面轮次注入的事实（姓名/年龄/数字/暗号），若干轮后追问能否说出。</p>
+<p><strong>怎么算</strong>：4 个剧本共 12 个关键词；在指定追问轮的<strong>回答文本</strong>里做子串命中，召回率 = 命中数 / 12。</p>
+<p><strong>怎么测</strong>：<code>tools/eval_multiturn.py --suites A</code>，温度 0.7 / top_p 0.9，全历史重渲染。</p>
+<p><strong>怎么比</strong>：越高越好，60% 是本项目定的可用线。<strong>局限（必读）</strong>：子串命中≠语义理解——档一案例「蓝天白云」是字面照抄但语义仍胡解的<strong>弱命中</strong>；因此本章对比同时使用 1.3 的归因细分来补深度。</p>
+</div></div>
+
+<div class="feat"><h3>1.3 命中归因细分：「复述过的」vs「仅用户说过的」（本项目自建口径）</h3><div class="feat-body">
+<p><strong>是什么</strong>：把召回命中再分两类——模型<strong>自己早前回复里逐字说过</strong>的（上下文自复制即可答对）vs <strong>只有用户说过、模型从未复述</strong>的（必须真正「听」用户）。档一 50% 的 6 个命中全部是前者——「学会了复制自己，没学会倾听用户」的结论就来自这个口径。</p>
+<p><strong>怎么算</strong>：人工核对逐用例全文（<code>out/multiturn_samples/suiteA_*.md</code>），逐关键词回溯它是否出现在该模型此前任何一轮的回复中。</p>
+<p><strong>怎么比</strong>：「仅用户说过」类命中数的增长 = 真倾听能力的增长。档二的关键证据：算术用例的 17/35/900（旧模型从未复述过）首次全部命中。</p>
+</div></div>
+
+<div class="feat"><h3>1.4 n-gram 重复率（复读检测）</h3><div class="feat-body">
+<p><strong>是什么</strong>：生成文本的自我复读程度——卡在同一句式循环输出的直接信号。</p>
+<p><strong>怎么算</strong>：生成文本中重复出现的 n 元词组占比（本项目 n=3）。</p>
+<p><strong>怎么测</strong>：套件 C 逐轮记录（12 轮会话每轮一个值）。</p>
+<p><strong>怎么比</strong>：单轮高（如 0.95）= 该轮已陷入复读循环；<strong>会话末段 vs 前段的变化</strong>才是「长会话退化」的特征（见 1.9）。注意区分复读与「敷衍短句」——重复率 0 但只生成 11 个词是另一种失败（信息放弃）。</p>
+</div></div>
+
+<div class="feat"><h3>1.5 生成长度（token 数）</h3><div class="feat-body">
+<p><strong>是什么</strong>：回答的信息量粗代理。同一问题下，模型愿意展开多少内容。</p>
+<p><strong>怎么测</strong>：套件 B/C 逐条记录生成 token 数（上限 192，防失控）。</p>
+<p><strong>怎么比</strong>：<strong>形态比数字重要</strong>——本项目三代模型在长上下文压力下都是 9-11 token 的「敷衍短句」形态（对比正常回答的 50+ token），这是「对超训练窗上下文放弃作答」的特征签名；而 192 token + 0.95 重复率则是复读失控。两种形态指向不同病根。</p>
+</div></div>
+
+<div class="feat"><h3>1.6 在题率（回答相关性）</h3><div class="feat-body">
+<p><strong>是什么</strong>：回答是否针对所问（不跑题）。</p>
+<p><strong>怎么算</strong>：本项目为脚本启发式初判 + 人工核对样例（正式基准会用关键词/裁判模型）。</p>
+<p><strong>怎么比</strong>：跑题通常出现在上下文超过训练窗后（注意力被窗外的位置分布带偏）。official 在 768/1536/2048 档跑题而本项目模型在题（但敷衍）——两种不同的退化模式。</p>
+</div></div>
+
+<div class="feat"><h3>1.7 分长度档表现（套件 B）</h3><div class="feat-body">
+<p><strong>是什么</strong>：把对话历史垫长到 256/512/768/1024/1536/2048 六档再提问，观察各档的回答质量——<strong>训练窗内外推行为的直接探针</strong>。</p>
+<p><strong>怎么测</strong>：<code>tools/eval_multiturn.py --suites B</code>，合成填充历史 + 固定问题。</p>
+<p><strong>怎么比</strong>：训练窗内（≤1536）应稳定；窗外档的质量变化反映位置编码外推能力。YaRN 免训练外推在本项目实测为负收益（1536/2048 档恶化成复读循环）——说明「位置编码插值」救不了没见过长序列的底座。</p>
+</div></div>
+
+<div class="feat"><h3>1.8 长文档交叉熵（底座长位置建模能力）</h3><div class="feat-body">
+<p><strong>是什么</strong>：预训练底座在长文本（本项目取 ≥1024 token，1536 窗口）上的语言建模质量——长上下文能力的「原材料」指标，与对话能力正交。</p>
+<p><strong>怎么测</strong>：<code>tools/eval_cont_train.py</code>：新旧底座各算 200 条长文档的 token 加权 CE，同时算 200 条短文档 CE 作防遗忘对照。</p>
+<p><strong>怎么比</strong>：长文档 CE 显著下降且短文档劣化 ≤5%，说明「长上下文续训」既有效又没冲坏原有能力。档二实测：长 −20.7% / 短 +4.28%。</p>
+</div></div>
+
+<div class="feat"><h3>1.9 长会话退化斜率（前 3 / 末 3 轮重复率）</h3><div class="feat-body">
+<p><strong>是什么</strong>：连续 12 轮对话中，复读倾向随轮次的增长——「越聊越崩」的速度。</p>
+<p><strong>怎么算</strong>：套件 C 逐轮 3-gram 重复率，取前 3 轮均值与末 3 轮均值之差。</p>
+<p><strong>怎么比</strong>：末 3 ≈ 前 3 = 无退化；差值越大退化越快。三代模型：0.373（era1）→ 0.221（档一）→ 0.016（档二）——档二几乎零退化。</p>
+</div></div>
+
+<div class="feat"><h3>1.10 边界行为（超长输入）</h3><div class="feat-body">
+<p><strong>是什么</strong>：输入超过模型位置编码表容量（32,768）时的行为——崩溃、静默截断还是明确报错。</p>
+<p><strong>怎么测</strong>：套件 D（39,990 token 输入）。<strong>怎么比</strong>：工程特征而非能力特征——修复在推理引擎侧（明确中文报错 + 提示缩短或开外推），模型侧本身仍会张量形状错误，评测如实记录。</p>
+</div></div>
+
+<h2 id="sec2"><span class="sec-no">02</span>三代模型特征对比（era1 → 档一 → 档二）</h2>
+<p>三代模型 = 同一 64M 架构 + 不同数据与训练路径（era1：旧管线/768 窗；档一：修复后管线/1536 窗；档二：档一基础上换续训底座+多轮增强数据）。评测全部同口径（seed 42、同工具、同剧本）。</p>
+
+<h3>2.1 总对比表</h3>
+<table>
+<tr><th>特征</th><th>era1（旧管线）</th><th>档一（管线修复）</th><th>档二（数据+底座增强）</th><th>official 参照</th></tr>
+<tr><td>A 跨轮召回（1.2）</td><td>16.7%（2/12）</td><td>50.0%（6/12）</td><td class="delta-up">75.0%（9/12）</td><td>33.3%</td></tr>
+<tr><td>A「仅用户说过」类命中（1.3）</td><td>0</td><td>0</td><td class="delta-up">3（17/35/900 全中）</td><td>1（900）</td></tr>
+<tr><td>C 末 3 轮重复率（1.4）</td><td>0.454</td><td>0.283</td><td class="delta-up">0.086</td><td>0.588</td></tr>
+<tr><td>C 退化斜率（1.9）</td><td>0.373</td><td>0.221</td><td class="delta-up">0.016</td><td>0.457</td></tr>
+<tr><td>C 前 3 轮重复率</td><td>0.081</td><td>0.062</td><td>0.070</td><td>0.131</td></tr>
+<tr><td>B 在题率（1.6/1.7）</td><td>6/6</td><td>6/6</td><td class="delta-flat">5/6（512 档复读 ❌）</td><td>3/6</td></tr>
+<tr><td>B 生成长度（1.5）</td><td>9-11 tok 敷衍短句</td><td>9-11 tok</td><td class="delta-flat">11 tok（512 档 192 tok 失控）</td><td>5-18 tok</td></tr>
+<tr><td>底座长文档 CE（1.8）</td><td>4.121</td><td>4.121（未动底座）</td><td class="delta-up">3.268（−20.7%）</td><td>—</td></tr>
+<tr><td>底座短文档 CE（防遗忘）</td><td>4.512</td><td>4.512</td><td>4.705（+4.3%，门内）</td><td>—</td></tr>
+<tr><td>D 边界行为（1.10）</td><td>裸异常</td><td>裸异常</td><td>裸异常（引擎侧已修）</td><td>同</td></tr>
+</table>
+
+<h3>2.2 逐特征解读：改进了什么、为什么</h3>
+<p><strong>召回率的两级跳各有不同来源。</strong>16.7%→50% 发生在<strong>数据管线修复</strong>后（监督信号从名义值 37% 恢复到 100%），但归因细分显示档一的 6 个命中全是「自己复述过的」——机制上是上下文自复制；50%→75% 发生在<strong>多轮数据增强</strong>后，且增量证据（算术用例 3 个数字、精确姓名「李小明」）来自「仅用户说过」类——Belle 真实多轮对话里的「引用用户信息」模式被学到，即「倾听」能力的实证。两级增益来源不同，恰好验证了「先修管线、再补数据模式」的顺序正确性。</p>
+<p><strong>长会话稳定性的改善与数据结构直接对应。</strong>残段修复（不再教「半截话」）解释档一的 0.454→0.283；深多轮样本 3.9%→12.7% 解释档二的 0.283→0.086——12 轮会话的「素材」从几乎没有到充足，退化斜率几乎归零（0.016）。official 同数据旧管线 0.588 作反证。</p>
+<p><strong>B 档不动是最有信息量的「负结果」。</strong>档二动了底座（长文档 CE −20.7%）、动了数据（多轮 41.7%），但合成长历史场景下仍是敷衍短句。结合底座指标显著改善而 B 不变，可以<strong>排除「底座长文本建模不足」这个解释</strong>——剩余解释是：该场景（超长合成历史+固定提问）在训练分布中不存在，模型的生成分布没有对应的信号。<strong>特征组合的交叉验证把病根从「能力」改判为「分布缺失」</strong>，这是第 6 章方案 1 的直接依据。</p>
+<p><strong>新增的 512 档复读点</strong>（「在讨论中，我提到过」循环）：句式恰似 Belle「引用讨论历史」模式的退化解——单一档位触发（其余档位正常），是增强数据带来的局部副作用，列入下一步针对性处理。</p>
+
+<h2 id="sec3"><span class="sec-no">03</span>数据处理流水：两轮各做了什么</h2>
+<h3>3.1 档一：修「数据怎么进模型」（管线五项修复 + 窗口）</h3>
+<table>
+<tr><th>处理</th><th>处理前（era1 实测）</th><th>处理后（档一实测）</th></tr>
+<tr><td>截断方式：拦腰切 → 按整轮丢弃</td><td>多轮样本 82.3% 受损，回答只保 45.6%</td><td>可训样本留存区间完整率 100%</td></tr>
+<tr><td>半截回答不再当学习目标</td><td>每受损样本 0.82 个残段计损（教模型说半截话）</td><td>0（仅诊断计数 0.13）</td></tr>
+<tr><td>零效果样本过滤</td><td>5.7% 样本白耗显卡</td><td>训练期确定性跳过</td></tr>
+<tr><td>回复去重</td><td>8.6% 重复回复（教背答案）</td><td>键级 0（剔除 7.0%）</td></tr>
+<tr><td>验证集按内容哈希分配</td><td>分布偏差 21 个百分点（分数不可信）</td><td>0.08 个百分点</td></tr>
+<tr><td>训练窗口 768 → 1536</td><td>多轮对话一半装不下</td><td>p50=1227 的会话完整入窗</td></tr>
+</table>
+<p>附带工程修复（影响训练而非数据）：学习率退火分母 bug（双卡下分母×2，修复后正确退到 1e-6 下限）、数据编码重复分词与浅预取（吞吐 100K→185-213K tok/s）。</p>
+
+<h3>3.2 档二：改「数据里有什么」（外部多轮 + 上采样 + 底座素材）</h3>
+<table>
+<tr><th>处理</th><th>数量漏斗</th><th>目的（对应特征）</th></tr>
+<tr><td>Belle 中文多轮合入</td><td>83.1 万原始 → 解析/语言/长度过滤后 82.3 万 → 评测探针去污染剔除 3,424 → seed 42 抽 30 万</td><td>补「引用用户信息」模式（治 A 的倾听缺口）</td></tr>
+<tr><td>多轮上采样（训练视图确定性展开）</td><td>多轮 ×2、深多轮 ×3；多轮有效占比 19.4%→41.7%，深多轮 3.9%→12.7%（有效样本 502 万→675 万）</td><td>治 C 的长会话退化（深多轮素材）</td></tr>
+<tr><td>长文档续训子集（底座）</td><td>847 万文档 → 两段式筛（字符粗筛+逐条分词精筛）33.0 万条 ≥768 token + 11.0 万短文档回放（token 预算 5.4 亿）</td><td>治底座长位置建模（1.8 特征，−20.7%）</td></tr>
+</table>
+<p>防呆与守门：字符筛精度自检（首版 56% 被门禁拦截后改两段式，100%）；防遗忘 25% 回放（短文档劣化 +4.3% ≤5% 门）；去污染「宁错杀不泄露」；验证视图永不重复采样。</p>
+
+<h2 id="sec4"><span class="sec-no">04</span>实验修改流程图</h2>
+<p>整个改进循环的骨架是「<strong>训练 → 测量 → 归因 → 改数据/管线 → 重训 → 同口径复测</strong>」。两轮改动标注在对应节点上（<span class="flow-tag t1">档一</span> <span class="flow-tag t2">档二</span>）。</p>
+
+<div class="flow">
+<div class="flow-row">
+<div class="flow-node"><div class="fn-title">① 数据</div>
+<ul><li><span class="flow-tag t1">C1-C5 管线修复</span></li><li><span class="flow-tag t2">+Belle 30 万（去污染）</span></li><li><span class="flow-tag t2">上采样 41.7%</span></li><li><span class="flow-tag t2">长文档子集 33 万</span></li></ul></div>
+<div class="flow-arrow">→</div>
+<div class="flow-node"><div class="fn-title">② 管线/代码</div>
+<ul><li><span class="flow-tag t1">轮次截断·去重·分桶</span></li><li><span class="flow-tag t1">LR 分母修复</span></li><li><span class="flow-tag t1">吞吐修复 ×2</span></li></ul></div>
+<div class="flow-arrow">→</div>
+<div class="flow-node"><div class="fn-title">③ 训练</div>
+<ul><li><span class="flow-tag t1">SFT 窗 768→1536</span></li><li><span class="flow-tag t2">底座续训 380→1536</span></li><li><span class="flow-tag t2">增强 SFT 30h → DPO</span></li></ul></div>
+<div class="flow-arrow">→</div>
+<div class="flow-node"><div class="fn-title">④ 测量（同口径）</div>
+<ul><li>四套件 A/B/C/D</li><li>底座长短文档 CE</li><li>管线画像/数据卡</li></ul></div>
+<div class="flow-arrow">→</div>
+<div class="flow-node"><div class="fn-title">⑤ 归因</div>
+<ul><li>命中细分：复制自己 vs 倾听</li><li>特征交叉验证（B 不变 → 分布缺失）</li></ul></div>
+</div>
+<div class="loopback">↺ 归因结论回到 ①/② 形成下一轮（档一结论→档二输入；档二结论→第 6 章方案）</div>
+</div>
+
+<table>
+<tr><th>循环</th><th>归因发现（测量→结论）</th><th>据此改动（下一轮输入）</th><th>验证结果</th></tr>
+<tr><td>era1 → 档一</td><td>官方同数据同病 → 根因在数据；画像定位截断损毁</td><td>五项管线修复 + 窗口 1536</td><td>A 50%（但全是自复制）、C −38%、B 不变</td></tr>
+<tr><td>档一 → 档二</td><td>「倾听」缺口 + 深多轮 3.9% + 底座 380 窗是 B 的根</td><td>Belle 混入 + 上采样 + 底座续训</td><td>A 75%（倾听实证）、C 0.086、B 仍不变（改判为分布缺失）</td></tr>
+</table>
+
+<h2 id="sec5"><span class="sec-no">05</span>变化清单（era1 → 档二全量差异）</h2>
+<table>
+<tr><th>维度</th><th>era1</th><th>档一</th><th>档二</th></tr>
+<tr><td>训练数据</td><td>sft_t2t 原样（重复 8.6%、多轮 19.4%）</td><td>同数据，管线清洗后（键级 0 重复）</td><td>+Belle 30 万；多轮有效 41.7%、深多轮 12.7%</td></tr>
+<tr><td>预训练底座</td><td>380 窗，45% token 未训练</td><td>未动</td><td>续训 1536 窗（长文档 CE −20.7%）</td></tr>
+<tr><td>截断语义</td><td>拦腰切（残段计损、5.7% 白耗）</td><td>整轮保留（完整率 100%）</td><td>同档一</td></tr>
+<tr><td>验证集</td><td>文件尾切（偏差 21pp，分数失真）</td><td colspan="2">内容哈希分桶（偏差 0.05-0.08pp）</td></tr>
+<tr><td>SFT 窗口 / 训练量</td><td>768 / 11.3h</td><td>1536 / 26.5h</td><td>1536 / 29.9h（有效样本 +43%）</td></tr>
+<tr><td>学习率调度</td><td colspan="2">双卡分母 bug（终值 2.3e-6）</td><td>修复（正确退到 1e-6）</td></tr>
+<tr><td>吞吐</td><td>~100K tok/s</td><td colspan="2">185-213K（编码去重 + 深预取）</td></tr>
+<tr><td><strong>不变项</strong></td><td colspan="3">模型架构（64M/GQA/词表 6400）、评测口径（seed 42 四套件）、SFT 学习率 1e-5、DPO 配方</td></tr>
+</table>
+
+<h2 id="sec6"><span class="sec-no">06</span>进一步改进方案（当前结论驱动）</h2>
+<table>
+<tr><th>#</th><th>针对的结论</th><th>方案</th><th>预期收益 / 验收线</th><th>成本</th></tr>
+<tr><td>1</td><td>B 档短句未变（病根=分布缺失，非能力）</td><td><strong>合成长上下文对话数据</strong>：用强模型把现有长文档改写成「长历史+深度问答」对话，喂给套件 B 同型分布；辅以 DPO 生成长度偏好对（长而切题 > 敷衍短句）</td><td>B 档生成长度 11→≥40 tok 且在题；512 复读点消失</td><td>1-2 天数据 + ~12h 训练</td></tr>
+<tr><td>2</td><td>「倾听」未覆盖第 2 轮（程序员/爬山/花花仍丢）</td><td><strong>轮位加权</strong>：对「中后段轮次注入事实、末轮需要召回」的样本加权；不足则合成「逐轮注入-末轮全量召回」剧本（现有单轮 QA 串联即可，零新数据源）</td><td>A 召回 75%→≥85%，且「仅用户说过」类命中 ≥7/12</td><td>0.5-1 天 + ~12h</td></tr>
+<tr><td>3</td><td>512 档单点复读（Belle 副作用）</td><td>推理侧先止血（repetition_penalty 已有开关，默认 1.0→1.1）；训练侧在方案 1 数据中混入「引用历史但不循环」的正例</td><td>512 档重复率 &lt;0.2</td><td>近零 / 随方案 1</td></tr>
+<tr><td>4</td><td>底座仍有上限（窗口 1536，2048 档外推）</td><td>视方案 1-2 结果决定是否 pretrain 全量重训@768-1024（4b 兜底路线，两档方案见重训计划 §10.3）</td><td>2048 档在题且生成正常</td><td>~40h GPU，慎投</td></tr>
+<tr><td>5</td><td>工程遗留</td><td>数据卡 worker 计数修复（重映射计数在子进程，需汇总）；评测脚本侧超长输入守卫</td><td>数据卡计数准确；套件 D 明确报错</td><td>各 0.5 天</td></tr>
+</table>
+<p><strong>优先级建议</strong>：方案 2（性价比最高：A 从 75 到 85 一步）→ 方案 1（B 档是最后一块能力短板，成本也最高）→ 方案 3/5（随行小修）→ 方案 4（仅在 1/2 完成后仍不达标时评估）。容量判断：算术用例已全对说明 64M 对当前目标够用——继续提升靠数据而非参数量。</p>
+
+<ul>
+<li>关联报告：<a href="retrain_plan.html">重训优化计划（全部实施实录）</a> · <a href="dataeng.html">数据工程实测</a> · <a href="multiturn.html">多轮能力检测</a> · <a href="perf_analysis.html">性能问题分析</a> · <a href="reports.html">报告主线</a></li>
+</ul>
+
+</main>
+</div>
+<footer>生成于 2026-10-02 · minimind_reborn · 特征口径同 seed 42；三代权重归档 era1/era2/era3</footer>
+<script>
+(function() {
+  const links = Array.from(document.querySelectorAll('nav.toc a'));
+  const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  function update() {
+    let cur = 0;
+    const y = window.scrollY + 90;
+    targets.forEach((t, i) => { if (t.offsetTop <= y) cur = i; });
+    links.forEach((a, i) => a.classList.toggle('active', i === cur));
+  }
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
+</body>
+</html>

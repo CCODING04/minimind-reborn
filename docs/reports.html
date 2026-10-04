@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>报告主线 · minimind_reborn</title>
+<style>
+pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}/*!
+  Theme: GitHub
+  Description: Light theme as seen on github.com
+  Author: github.com
+  Maintainer: @Hirse
+  Updated: 2021-05-15
+
+  Outdated base version: https://github.com/primer/github-syntax-light
+  Current colors taken from GitHub's CSS
+*/.hljs{color:#24292e;background:#fff}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}.hljs-built_in,.hljs-symbol{color:#e36209}.hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}.hljs-subst{color:#24292e}.hljs-section{color:#005cc5;font-weight:700}.hljs-bullet{color:#735c0f}.hljs-emphasis{color:#24292e;font-style:italic}.hljs-strong{color:#24292e;font-weight:700}.hljs-addition{color:#22863a;background-color:#f0fff4}.hljs-deletion{color:#b31d28;background-color:#ffeef0}
+/* ===== GitHub Light (Primer) 风格 ===== */
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --bg-inset: #eff2f5;
+  --border: #d1d9e0;
+  --border-muted: #d8dee4;
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --fg-subtle: #6e7781;
+  --accent: #0969da;
+  --success: #1a7f37;
+  --attention: #9a6700;
+  --danger: #cf222e;
+  --code-bg: #f6f8fa;
+  --inline-code-bg: rgba(129, 139, 152, 0.16);
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial,
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+          "Courier New", "PingFang SC", "Microsoft YaHei", monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ===== 顶部横幅 ===== */
+.hero {
+  background: linear-gradient(180deg, #f6f8fa 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 48px 24px 40px;
+  text-align: center;
+}
+.hero h1 { font-size: 30px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.5px; }
+.hero p.sub { color: var(--fg-muted); margin: 0 auto 16px; max-width: 760px; font-size: 16px; }
+.hero .meta {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.hero .meta span {
+  background: var(--bg-subtle); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 12px;
+}
+
+/* ===== 布局：左侧目录 + 右侧正文 ===== */
+.layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 40px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 24px 96px;
+}
+nav.toc {
+  position: sticky; top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 13px;
+}
+nav.toc .toc-title {
+  font-weight: 600; color: var(--fg); margin-bottom: 8px;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+}
+nav.toc a {
+  display: block; color: var(--fg-muted); text-decoration: none;
+  padding: 4px 10px; border-left: 2px solid transparent; line-height: 1.5;
+  border-radius: 0 6px 6px 0;
+}
+nav.toc a:hover { color: var(--fg); background: var(--bg-subtle); }
+nav.toc a.lvl2 { padding-left: 24px; }
+nav.toc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
+
+main.content { max-width: 1012px; }
+
+/* ===== GitHub markdown 元素 ===== */
+.content h2 {
+  font-size: 24px; font-weight: 600; margin: 48px 0 16px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  letter-spacing: -0.3px;
+}
+.content h2 .sec-no {
+  color: var(--fg-subtle); font-weight: 500; font-family: var(--mono); font-size: 18px;
+  margin-right: 8px;
+}
+.content h3 { font-size: 19px; font-weight: 600; margin: 32px 0 12px; }
+.content h4 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+.content p { margin: 0 0 14px; }
+.content a { color: var(--accent); text-decoration: none; }
+.content a:hover { text-decoration: underline; }
+.content strong { font-weight: 600; }
+.content ul, .content ol { margin: 0 0 14px; padding-left: 26px; }
+.content li { margin: 4px 0; }
+.content li::marker { color: var(--fg-subtle); }
+.content hr { border: 0; border-top: 1px solid var(--border); margin: 36px 0; }
+
+blockquote {
+  margin: 0 0 14px; padding: 0 16px; color: var(--fg-muted);
+  border-left: 4px solid var(--border);
+}
+blockquote p { margin: 8px 0; }
+
+code {
+  font-family: var(--mono); font-size: 85%;
+  background: var(--inline-code-bg);
+  border-radius: 6px; padding: 0.18em 0.4em;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--border-muted);
+  border-radius: 8px; padding: 16px; overflow-x: auto;
+  margin: 0 0 16px; line-height: 1.5; font-size: 13.5px;
+}
+pre code {
+  background: transparent; padding: 0; border-radius: 0; font-size: 100%;
+  display: block; min-width: max-content;
+}
+.code-head {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-subtle); border: 1px solid var(--border-muted); border-bottom: 0;
+  border-radius: 8px 8px 0 0; padding: 6px 14px;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.code-head + pre { border-radius: 0 0 8px 8px; }
+.code-head .path { color: var(--accent); }
+
+/* 表格 */
+table { border-collapse: collapse; margin: 0 0 16px; width: 100%; font-size: 14px; }
+th, td { border: 1px solid var(--border); padding: 7px 13px; text-align: left; vertical-align: top; }
+th { background: var(--bg-subtle); font-weight: 600; }
+tr:nth-child(2n) td { background: #fbfcfd; }
+table code { white-space: nowrap; }
+
+/* 徽章 / 标签 */
+.badge {
+  display: inline-block; font-size: 12px; font-family: var(--mono);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 1px 10px; margin-right: 6px; color: var(--fg-muted);
+  background: var(--bg-subtle);
+}
+.badge.b-green { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.badge.b-amber { color: var(--attention); border-color: color-mix(in srgb, var(--attention) 40%, transparent); }
+.badge.b-red   { color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+
+/* 提示框（GitHub alert 样式） */
+.alert {
+  border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  background: var(--bg-subtle); border-radius: 8px;
+  padding: 12px 16px; margin: 0 0 16px; font-size: 14.5px;
+}
+.alert.tips { border-left-color: var(--success); }
+.alert.warn { border-left-color: var(--attention); }
+.alert .alert-title { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.alert p:last-child { margin-bottom: 0; }
+
+/* 卡片网格（项目概览） */
+.grid-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin: 0 0 20px;
+}
+.card {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px; background: var(--bg);
+}
+.card h4 { margin: 0 0 6px; font-size: 15.5px; display: flex; align-items: center; gap: 8px; }
+.card h4 .star { color: var(--attention); font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.card p { margin: 0; color: var(--fg-muted); font-size: 13.5px; line-height: 1.55; }
+.card .dim { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 2px 8px; border-radius: 6px; }
+
+/* 目录树 */
+.tree {
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  background: var(--code-bg); border: 1px solid var(--border-muted);
+  border-radius: 8px; padding: 14px 18px; overflow-x: auto;
+  white-space: pre; margin: 0 0 16px; color: var(--fg);
+}
+.tree .c { color: var(--fg-subtle); }
+.tree .d { color: var(--accent); font-weight: 600; }
+
+/* 过程时间线 */
+.timeline { border-left: 2px solid var(--border); margin: 0 0 16px 8px; padding-left: 24px; }
+.timeline .tl-item { position: relative; margin-bottom: 18px; }
+.timeline .tl-item::before {
+  content: ""; position: absolute; left: -30px; top: 6px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--accent);
+}
+.timeline .tl-item.done::before { background: var(--accent); }
+.timeline .tl-time { font-family: var(--mono); font-size: 12px; color: var(--fg-subtle); }
+.timeline .tl-body { font-size: 14.5px; }
+
+/* 小节导航返回 */
+.top-link { float: right; font-size: 12px; font-family: var(--mono); }
+
+footer {
+  border-top: 1px solid var(--border); color: var(--fg-subtle);
+  text-align: center; padding: 28px 16px; font-size: 13px;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.toc { display: none; }
+  .hero h1 { font-size: 24px; }
+}
+
+/* 打印 */
+@media print {
+  nav.toc, .top-link { display: none; }
+  .layout { display: block; padding: 0; }
+  pre { white-space: pre-wrap; }
+}
+
+</style>
+
+<style>
+/* ===== 主线页追加样式 ===== */
+.timeline { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 8px; font-family: var(--mono); font-size: 12px; }
+.timeline a { border: 1px solid var(--border); border-radius: 999px; padding: 4px 12px; color: var(--fg-muted); text-decoration: none; background: var(--bg-subtle); }
+.timeline a:hover { color: var(--accent); border-color: var(--accent); }
+.chapter { border: 1px solid var(--border); border-radius: 10px; padding: 20px 24px; margin: 18px 0; background: var(--bg); }
+.chapter .ch-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.chapter .ch-no { font-family: var(--mono); font-size: 13px; color: var(--fg-subtle); }
+.chapter .ch-title { font-size: 18px; font-weight: 600; }
+.chapter .ch-title a { color: var(--fg); text-decoration: none; }
+.chapter .ch-title a:hover { color: var(--accent); }
+.chapter .ch-date { font-family: var(--mono); font-size: 12px; color: var(--fg-muted); }
+.chapter .ch-q { margin: 10px 0 6px; color: var(--accent); font-weight: 600; font-size: 15px; }
+.chapter p { margin: 6px 0; font-size: 14.5px; color: var(--fg-muted); }
+.chapter p strong { color: var(--fg); }
+.chapter .chain { color: var(--fg-subtle); font-size: 13px; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.chapter .chain::before { content: "↓ 由此引出："; color: var(--attention); font-weight: 600; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <h1>报告主线 · minimind_reborn</h1>
+  <p class="sub">七份报告按实验顺序串联：每份回答一个问题，又引出下一个问题——从「把研究代码变成训练项目」走到「长上下文与多轮对话的根因修复」</p>
+  <div class="meta"><span>2026-09-24 → 09-30</span><span>6 份报告 · 1 条主线</span><span>全部结论带实测数字</span></div>
+</header>
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <div class="toc-title">七个章节</div>
+  <a href="#c1">① 重构：能不能可靠地训练</a>
+  <a href="#c2">② 加固：全量训练跑得稳吗</a>
+  <a href="#c3">③ 体检：模型对话能力如何</a>
+  <a href="#c4">④ 归因：数据到底哪里坏了</a>
+  <a href="#c5">⑤ 修复+重训：能不能治好</a>
+  <a href="#c6">⑤½ 性能插曲：训练慢与隐藏 bug</a>
+  <a href="#next">⑥ 档二：已完成（A 75%/C 0.086）</a>
+  <a href="#gloss">术语速查</a>
+  <a href="model_features_compare.html" style="color:var(--accent)">⑦ 特征对比分析（新）</a>
+</nav>
+<main class="content">
+
+<h2 id="top" style="margin-top:0">这个项目在做什么</h2>
+<p>把开源的迷你中文语言模型项目 minimind（64M 参数）从一份「跑通一次就扔的研究脚本」重构成一个<strong>可靠、可复现、可迭代的训练项目</strong>（minimind_reborn），然后沿着一条真实的改进循环走下去：<strong>训练 → 测出问题 → 归因到数据 → 修数据管线 → 重训 → 复测验证</strong>。下面七个章节就是这个循环的完整记录，每份报告开头都标注了自己在主线中的位置。</p>
+<div class="timeline">
+<a href="#c1">① 09-24 重构</a>
+<a href="#c2">② 09-25 加固</a>
+<a href="#c3">③ 09-25 能力体检</a>
+<a href="#c4">④ 09-27 数据归因</a>
+<a href="#c5">⑤ 09-28~30 修复与重训</a>
+<a href="#c6">⑤½ 09-29 性能插曲</a>
+<a href="#next">⑥ 档二（待执行）</a>
+</div>
+
+<div class="chapter" id="c1">
+<div class="ch-head"><span class="ch-no">①</span><span class="ch-title"><a href="index.html">重构实录：从研究代码到训练项目</a></span><span class="ch-date">2026-09-24</span></div>
+<div class="ch-q">研究代码能不能变成可靠地反复训练的工程？</div>
+<p><strong>做了什么</strong>：逐文件研读原版 17 个源文件，列出 19 处工程缺陷（脚本间约 300 行复制粘贴、配置没有存档快照、训练全程没有验证集、日志靠 print……），重构为 src 布局、8 个训练范式共享一套基件的训练项目。核心依赖从 30 个锁死版本收敛到 3 个，43 个单元测试全绿。</p>
+<p><strong>关键结果</strong>：先用 <strong>「mini 时代」</strong>（全量数据 1/8 的小数据集）把训练全链路跑通——预训练 79 分钟、指令微调 121 分钟、偏好对齐 4 分钟；与官方发布的 64M 权重做了键级互通与数值对照（fp32 推理 100% 逐位一致）。</p>
+<div class="chain">小数据只验证了「流程通」，模型能力离可用还很远——下一步：把工程加固到位，然后上全量数据。</div>
+</div>
+
+<div class="chapter" id="c2">
+<div class="ch-head"><span class="ch-no">②</span><span class="ch-title"><a href="hardening.html">加固实录：从交付到持续变好</a></span><span class="ch-date">2026-09-25</span></div>
+<div class="ch-q">全量数据一跑十几个小时，工程上扛得住吗？</div>
+<p><strong>做了什么</strong>：三件事——修好观测（训练曲线的三个统计标准不一致，统一后才能信任曲线）；动手实测（强杀进程后从存档恢复训练，损失轨迹偏差仅 0.67%；双卡并行效率从 67.6% 提到 88.5%）；通过规范审计（类型检查清零 68 个错误，顺带挖出 2 个真 bug）。</p>
+<p><strong>关键结果</strong>：全量数据三阶段训练一次跑完 <strong>18.4 小时</strong>。复读循环消失、事实性提升——但当时的能力测试只做了单轮问答。</p>
+<div class="chain">单轮问答看不出「连续对话」行不行——下一步：专门测多轮对话能力。</div>
+</div>
+
+<div class="chapter" id="c3">
+<div class="ch-head"><span class="ch-no">③</span><span class="ch-title"><a href="multiturn.html">多轮对话能力检测</a></span><span class="ch-date">2026-09-25</span></div>
+<div class="ch-q">模型会聊天吗？——设计四组测试专门考它</div>
+<p><strong>测出的问题</strong>（三模型对照，含官方权重）：告诉它「我叫李小明」，三句话后问「介绍一下我」，它已经忘了（信息召回率 <strong>16.7%</strong>，官方权重也只有 33.3%）；对话历史一长，回答缩成 5-18 个字的敷衍短句；连续聊 12 轮，后半程开始复读自己；输入超长时直接崩溃、没有任何提示。</p>
+<p><strong>关键归因</strong>：官方权重用同一份数据训练，毛病一样甚至更重——问题<strong>出在训练数据，不是训练代码</strong>。多轮对话样本只占数据的 19.4%，而且长对话在训练时被硬砍半截。</p>
+<div class="chain">「数据有问题」当时还是推断——下一步：对四份数据集做逐维度实测，把问题定位到具体数字。</div>
+</div>
+
+<div class="chapter" id="c4">
+<div class="ch-head"><span class="ch-no">④</span><span class="ch-title"><a href="dataeng.html">数据工程实测：缺陷定位</a></span><span class="ch-date">2026-09-27</span></div>
+<div class="ch-q">数据到底哪里坏了？——按工业标准逐项体检</div>
+<p><strong>推翻了两个假设</strong>：预训练数据并不缺去重（重复率近零）；全量数据也不欠训练（训练量是理论参考值的 3.4 倍）。</p>
+<p><strong>真凶是「截断」</strong>：训练窗口太窄，<strong>预训练阶段 45% 的文本内容从未进入训练</strong>；指令微调阶段一半对话超窗被从中间硬切——每条受损对话平均残留 0.82 个「说了一半的回答」还被当作学习目标（模型由此学会话说一半就停）、5.7% 的样本被切得一个完整回答都不剩（白烧算力）、8.6% 的回答原文重复（教模型背答案）。另外验证集从文件末尾切、分布严重偏移，训练分数不可信。</p>
+<p><strong>结论</strong>：5 个数据缺陷 + 5 个代码处理不当，每项带实测数字，并给出「先修管线、再两档重训」的可验收方案。</p>
+<div class="chain">方案有了——下一步：逐项修复并重训，用同一套测试验证是否治好。</div>
+</div>
+
+<div class="chapter" id="c5">
+<div class="ch-head"><span class="ch-no">⑤</span><span class="ch-title"><a href="retrain_plan.html">重训优化计划（含实施实录）</a></span><span class="ch-date">2026-09-28 规划 → 09-30 回填</span></div>
+<div class="ch-q">按方案修复+重训，问题真的治好了吗？</div>
+<p><strong>阶段 0</strong>：先测「不训练能走多远」——修正外推参数后，纯推理侧扩展实测为<strong>负收益</strong>（长对话反而恶化成复读），确认必须靠训练。</p>
+<p><strong>阶段 1（管线五项修复，全部达标）</strong>：按整轮保留对话不再拦腰切；半截回答不再当学习目标；零效果样本过滤；重复回答去重（8.6%→0）；验证集按内容重新分配（分布偏差 21→0.08 个百分点）。验收测量还顺带抓出 2 个实施设计缺陷并当场修复。</p>
+<p><strong>阶段 2+3（重训+复测）</strong>：跨轮召回 <strong>16.7% → 50.0%（3 倍，反超官方 33.3%）</strong>，12 轮长对话复读率 <strong>0.454 → 0.283（-38%）</strong>。但长上下文下的敷衍短句<strong>一点没变</strong>。</p>
+<p><strong>新的归因</strong>（逐用例分析）：新模型多记住的信息全部是「自己之前的回答里复述过的」——它学会了<strong>复制自己</strong>，还没学会<strong>倾听用户</strong>（用户说过、它没复述过的信息依然会丢）；长上下文没改善则确认瓶颈在预训练底座（它只见过 380 字以内的文本）。两个数据/底座决策点均触发下一步。</p>
+<div class="chain">多轮还差最后一段（数据占比低+深对话太少），长上下文根在底座——下一步：档二（续训底座+增强多轮数据）。</div>
+</div>
+
+<div class="chapter" id="c6">
+<div class="ch-head"><span class="ch-no">⑤½</span><span class="ch-title"><a href="perf_analysis.html">性能插曲：训练慢与一个隐藏 bug</a></span><span class="ch-date">2026-09-29（与⑤的阶段 2 交织）</span></div>
+<div class="ch-q">训练比计划慢一半，为什么？</div>
+<p><strong>问题一</strong>：GPU 有一半时间在空转等数据。最快窗口证明硬件能到 183K 字/秒，实际均值只有约 100K。根因是数据编码代码做了大量重复分词（81% 的样本被白白算两遍），加上过小的预取缓冲兜不住偶发的超慢样本。修复后吞吐翻倍到 <strong>185-213K</strong>。</p>
+<p><strong>问题二</strong>：顺带发现一个隐藏已久的学习率调度 bug——双卡训练时退火进度的分母被算成两倍，训练结束时学习率到不了预期的下限。历史训练同样受影响，但损害比最初判断的轻（终值 2.32e-6 而非 5.5e-6，经独立复审修正）。修复带上了防回归测试。</p>
+<p><strong>处置</strong>：两个问题都在训练暂停窗口内修复并验收（82 个测试全绿），续训后学习率回到正确曲线。两者都<strong>只影响训练效率和超参，不影响已训权重的正确性</strong>。</p>
+</div>
+
+<div class="chapter" id="next">
+<div class="ch-head"><span class="ch-no">⑥</span><span class="ch-title">档二：数据增强 + 底座续训（已完成）</span></div>
+<div class="ch-q">两块短板的最后一段路——治好了吗？</div>
+<p><strong>做了什么</strong>（合并执行省一轮训练）：① 长上下文续训——加载旧底座、窗口 380→1536、低学习率在长文档子集上继续预训练（58 分钟，长文档交叉熵改善 20.7%，防遗忘门通过）；② 多轮数据增强——Belle 中文多轮 30 万条清洗合入（去污染后）+ 上采样（多轮有效占比 19.4%→41.7%、深对话 3.9%→12.7%）；③ 新底座上重训 30 小时 + 偏好对齐。</p>
+<p><strong>终验收</strong>：跨轮召回 <strong>16.7% → 50.0% → 75.0%</strong>（两轮共 4.5 倍，超目标线 60%；历史上三个模型全崩的算术+跨轮用例首次全对——「倾听用户」的真实证据）；12 轮长会话末段复读 <strong>0.454 → 0.283 → 0.086</strong>（几乎零退化）。<strong>遗留</strong>：长上下文合成场景的敷衍短句未改善、新增一处单点复读——属下一轮议题（合成长对话数据/生成长度奖励），产物归档 era3。</p>
+</div>
+
+<div class="chapter" id="c7">
+<div class="ch-head"><span class="ch-no">⑦</span><span class="ch-title"><a href="model_features_compare.html">模型特征说明与两代模型对比分析</a></span><span class="ch-date">2026-10-02</span></div>
+<div class="ch-q">三代模型的改进如何用同一把尺子说清楚？</div>
+<p><strong>做了什么</strong>：先给「尺子」——10 个特征的意义/算法/测量/对比陷阱（含本项目踩过的三次数值不可比坑）；再同口径对比 era1→档一→档二（召回 16.7%→50%→75%、末段复读 0.454→0.086、底座长文档 CE −20.7%、B 档不动），逐特征归因（两级召回增益来源不同、B 档不动把病根从「能力」改判「分布缺失」）；附实验修改流程图、era1→档二全量变化清单、五项结论驱动的下一步方案。</p>
+</div>
+
+<h2 id="gloss">术语速查（跨报告高频词的白话对照）</h2>
+<p>完整术语表见 <a href="retrain_plan.html">重训计划报告 §2</a>。以下是最容易跨报告混淆的词：</p>
+<table>
+<tr><th>词</th><th>白话含义</th></tr>
+<tr><td>mini 时代 / 全量时代</td><td>先用 1/8 小数据验证流程（重构期），再上完整数据（加固期起）的两个阶段</td></tr>
+<tr><td>档一 / 档二</td><td>两档重训方案：档一=只重训指令微调（便宜、先做）；档二=连预训练底座一起治（贵、治长上下文的根）</td></tr>
+<tr><td>白训 → 零效果样本</td><td>被截断得一个完整回答都不剩的训练样本：算了但什么都没学到，纯耗显卡（旧报告称「白训」）</td></tr>
+<tr><td>残段</td><td>被截断只剩前半截的回答——模型学它就会学会「话说一半就停」</td></tr>
+<tr><td>定标 → 基线测量</td><td>动手改之前先用工具实测一遍现状数字，作为日后对比的基准</td></tr>
+<tr><td>口径 → 统计标准/测量方式</td><td>同一个数字在不同统计规则下的值不可互相比（如两份报告的验证损失）；旧文用「口径」，新文已改白话</td></tr>
+<tr><td>冒烟测试</td><td>正式训练前先跑几十步，快速确认显存够用、损失在降、速度正常</td></tr>
+<tr><td>MFU</td><td>显卡算力利用率：实际有效计算占理论峰值的比例</td></tr>
+<tr><td>铁律 N</td><td>项目自定规范的条款编号（如铁律 8 = 训练中断后自动从存档恢复）</td></tr>
+<tr><td>套件 A/B/C/D</td><td>多轮能力四组测试：A=跨轮记忆，B=不同长度下的表现，C=12 轮长聊稳定性，D=超长输入的边界行为</td></tr>
+</table>
+
+</main>
+</div>
+<footer>生成于 2026-09-30 · 最近更新 2026-10-02 · minimind_reborn · <a href="model_features_compare.html">最新：特征对比分析</a> · <a href="retrain_plan.html">重训计划</a></footer>
+<script>
+(function() {
+  const links = Array.from(document.querySelectorAll('nav.toc a'));
+  const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  function update() {
+    let cur = 0;
+    const y = window.scrollY + 90;
+    targets.forEach((t, i) => { if (t.offsetTop <= y) cur = i; });
+    links.forEach((a, i) => a.classList.toggle('active', i === cur));
+  }
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
+</body>
+</html>

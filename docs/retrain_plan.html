@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>重训优化计划：长上下文 + 多轮对话（含实施实录）</title>
+<style>
+pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}/*!
+  Theme: GitHub
+  Description: Light theme as seen on github.com
+  Author: github.com
+  Maintainer: @Hirse
+  Updated: 2021-05-15
+
+  Outdated base version: https://github.com/primer/github-syntax-light
+  Current colors taken from GitHub's CSS
+*/.hljs{color:#24292e;background:#fff}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}.hljs-built_in,.hljs-symbol{color:#e36209}.hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}.hljs-subst{color:#24292e}.hljs-section{color:#005cc5;font-weight:700}.hljs-bullet{color:#735c0f}.hljs-emphasis{color:#24292e;font-style:italic}.hljs-strong{color:#24292e;font-weight:700}.hljs-addition{color:#22863a;background-color:#f0fff4}.hljs-deletion{color:#b31d28;background-color:#ffeef0}
+/* ===== GitHub Light (Primer) 风格 ===== */
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f6f8fa;
+  --bg-inset: #eff2f5;
+  --border: #d1d9e0;
+  --border-muted: #d8dee4;
+  --fg: #1f2328;
+  --fg-muted: #59636e;
+  --fg-subtle: #6e7781;
+  --accent: #0969da;
+  --success: #1a7f37;
+  --attention: #9a6700;
+  --danger: #cf222e;
+  --code-bg: #f6f8fa;
+  --inline-code-bg: rgba(129, 139, 152, 0.16);
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial,
+          "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+          "Courier New", "PingFang SC", "Microsoft YaHei", monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ===== 顶部横幅 ===== */
+.hero {
+  background: linear-gradient(180deg, #f6f8fa 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 48px 24px 40px;
+  text-align: center;
+}
+.hero h1 { font-size: 30px; font-weight: 600; margin: 0 0 8px; letter-spacing: -0.5px; }
+.hero p.sub { color: var(--fg-muted); margin: 0 auto 16px; max-width: 760px; font-size: 16px; }
+.hero .meta {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.hero .meta span {
+  background: var(--bg-subtle); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 12px;
+}
+
+/* ===== 布局：左侧目录 + 右侧正文 ===== */
+.layout {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 40px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 32px 24px 96px;
+}
+nav.toc {
+  position: sticky; top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 13px;
+}
+nav.toc .toc-title {
+  font-weight: 600; color: var(--fg); margin-bottom: 8px;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+}
+nav.toc a {
+  display: block; color: var(--fg-muted); text-decoration: none;
+  padding: 4px 10px; border-left: 2px solid transparent; line-height: 1.5;
+  border-radius: 0 6px 6px 0;
+}
+nav.toc a:hover { color: var(--fg); background: var(--bg-subtle); }
+nav.toc a.lvl2 { padding-left: 24px; }
+nav.toc a.active { color: var(--accent); border-left-color: var(--accent); font-weight: 500; }
+
+main.content { max-width: 1012px; }
+
+/* ===== GitHub markdown 元素 ===== */
+.content h2 {
+  font-size: 24px; font-weight: 600; margin: 48px 0 16px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  letter-spacing: -0.3px;
+}
+.content h2 .sec-no {
+  color: var(--fg-subtle); font-weight: 500; font-family: var(--mono); font-size: 18px;
+  margin-right: 8px;
+}
+.content h3 { font-size: 19px; font-weight: 600; margin: 32px 0 12px; }
+.content h4 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+.content p { margin: 0 0 14px; }
+.content a { color: var(--accent); text-decoration: none; }
+.content a:hover { text-decoration: underline; }
+.content strong { font-weight: 600; }
+.content ul, .content ol { margin: 0 0 14px; padding-left: 26px; }
+.content li { margin: 4px 0; }
+.content li::marker { color: var(--fg-subtle); }
+.content hr { border: 0; border-top: 1px solid var(--border); margin: 36px 0; }
+
+blockquote {
+  margin: 0 0 14px; padding: 0 16px; color: var(--fg-muted);
+  border-left: 4px solid var(--border);
+}
+blockquote p { margin: 8px 0; }
+
+code {
+  font-family: var(--mono); font-size: 85%;
+  background: var(--inline-code-bg);
+  border-radius: 6px; padding: 0.18em 0.4em;
+}
+pre {
+  background: var(--code-bg); border: 1px solid var(--border-muted);
+  border-radius: 8px; padding: 16px; overflow-x: auto;
+  margin: 0 0 16px; line-height: 1.5; font-size: 13.5px;
+}
+pre code {
+  background: transparent; padding: 0; border-radius: 0; font-size: 100%;
+  display: block; min-width: max-content;
+}
+.code-head {
+  display: flex; justify-content: space-between; align-items: center;
+  background: var(--bg-subtle); border: 1px solid var(--border-muted); border-bottom: 0;
+  border-radius: 8px 8px 0 0; padding: 6px 14px;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.code-head + pre { border-radius: 0 0 8px 8px; }
+.code-head .path { color: var(--accent); }
+
+/* 表格 */
+table { border-collapse: collapse; margin: 0 0 16px; width: 100%; font-size: 14px; }
+th, td { border: 1px solid var(--border); padding: 7px 13px; text-align: left; vertical-align: top; }
+th { background: var(--bg-subtle); font-weight: 600; }
+tr:nth-child(2n) td { background: #fbfcfd; }
+table code { white-space: nowrap; }
+
+/* 徽章 / 标签 */
+.badge {
+  display: inline-block; font-size: 12px; font-family: var(--mono);
+  border: 1px solid var(--border); border-radius: 999px;
+  padding: 1px 10px; margin-right: 6px; color: var(--fg-muted);
+  background: var(--bg-subtle);
+}
+.badge.b-green { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.badge.b-amber { color: var(--attention); border-color: color-mix(in srgb, var(--attention) 40%, transparent); }
+.badge.b-red   { color: var(--danger);  border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+
+/* 提示框（GitHub alert 样式） */
+.alert {
+  border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  background: var(--bg-subtle); border-radius: 8px;
+  padding: 12px 16px; margin: 0 0 16px; font-size: 14.5px;
+}
+.alert.tips { border-left-color: var(--success); }
+.alert.warn { border-left-color: var(--attention); }
+.alert .alert-title { font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.alert p:last-child { margin-bottom: 0; }
+
+/* 卡片网格（项目概览） */
+.grid-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px; margin: 0 0 20px;
+}
+.card {
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 16px 18px; background: var(--bg);
+}
+.card h4 { margin: 0 0 6px; font-size: 15.5px; display: flex; align-items: center; gap: 8px; }
+.card h4 .star { color: var(--attention); font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.card p { margin: 0; color: var(--fg-muted); font-size: 13.5px; line-height: 1.55; }
+.card .dim { display: inline-block; margin-top: 10px; font-size: 12px; color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 2px 8px; border-radius: 6px; }
+
+/* 目录树 */
+.tree {
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  background: var(--code-bg); border: 1px solid var(--border-muted);
+  border-radius: 8px; padding: 14px 18px; overflow-x: auto;
+  white-space: pre; margin: 0 0 16px; color: var(--fg);
+}
+.tree .c { color: var(--fg-subtle); }
+.tree .d { color: var(--accent); font-weight: 600; }
+
+/* 过程时间线 */
+.timeline { border-left: 2px solid var(--border); margin: 0 0 16px 8px; padding-left: 24px; }
+.timeline .tl-item { position: relative; margin-bottom: 18px; }
+.timeline .tl-item::before {
+  content: ""; position: absolute; left: -30px; top: 6px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--accent);
+}
+.timeline .tl-item.done::before { background: var(--accent); }
+.timeline .tl-time { font-family: var(--mono); font-size: 12px; color: var(--fg-subtle); }
+.timeline .tl-body { font-size: 14.5px; }
+
+/* 小节导航返回 */
+.top-link { float: right; font-size: 12px; font-family: var(--mono); }
+
+footer {
+  border-top: 1px solid var(--border); color: var(--fg-subtle);
+  text-align: center; padding: 28px 16px; font-size: 13px;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.toc { display: none; }
+  .hero h1 { font-size: 24px; }
+}
+
+/* 打印 */
+@media print {
+  nav.toc, .top-link { display: none; }
+  .layout { display: block; padding: 0; }
+  pre { white-space: pre-wrap; }
+}
+
+</style>
+
+<style>
+/* ===== 本报告追加样式 ===== */
+.todo { list-style: none; padding-left: 0; }
+.todo li { padding: 3px 0 3px 4px; }
+.todo li::before { content: "☐ "; color: var(--fg-muted); }
+.todo li.done::before { content: "☑ "; color: var(--success); }
+.todo li.doing::before { content: "▯ "; color: var(--attention); }
+.impl { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 16px 20px; margin: 20px 0; background: var(--bg-subtle); }
+.impl h4 { margin-top: 4px; }
+.verdict { font-family: var(--mono); font-size: 12px; border-radius: 999px; padding: 2px 12px; margin-left: 8px; }
+.v-pending { border: 1px solid var(--border); color: var(--fg-muted); background: var(--bg); }
+.v-consistent { border: 1px solid color-mix(in srgb, var(--success) 40%, transparent); color: var(--success); background: var(--bg); }
+.v-deviation { border: 1px solid color-mix(in srgb, var(--attention) 45%, transparent); color: var(--attention); background: var(--bg); }
+.rep-card { border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; margin: 10px 0; background: var(--bg); }
+.rep-card .rep-title { font-weight: 600; }
+.rep-card .rep-meta { font-family: var(--mono); font-size: 12px; color: var(--fg-muted); margin: 4px 0 6px; }
+.rep-card p { margin: 0; color: var(--fg-muted); font-size: 14px; }
+details.analysis { margin: 10px 0 0; }
+details.analysis summary { cursor: pointer; color: var(--accent); font-size: 14px; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <h1>重训优化计划：长上下文 + 多轮对话（含实施实录）</h1>
+  <p class="sub">数据管线五项修复 · 档一 SFT 窗口 768→1536 · 档二长上下文续训 · 每阶段附实施结果与「预测 vs 实际」一致性分析</p>
+  <div class="meta"><span>2026-09-28</span><span>阶段 0-4 全部完成 · 召回 16.7%→75.0% · 末 3 轮重复 0.454→0.086</span><span>seed 42 同口径闭环</span><span>离线单文件</span></div>
+</header>
+<div style="max-width:1012px;margin:0 auto;padding:14px 24px 0;font-size:13.5px;">
+<div style="border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;background:var(--bg-subtle);padding:10px 16px;display:flex;gap:6px 18px;flex-wrap:wrap;align-items:baseline;">
+<span style="color:var(--fg-subtle);font-family:var(--mono);font-size:12px;">主线位置 ⑤/⑥</span>
+<span>← 上一份 <a href="dataeng.html">数据工程实测</a>：定位 5 数据缺陷 + 5 代码问题</span>
+<span><strong>本报告回答：按方案修复+重训，问题治好了吗？（召回 16.7%→50.0%，长上下文未变）</strong></span>
+<span>引出 → 档二方案已定（本报告 §10）：长上下文续训 + 多轮数据增强</span>
+</div>
+</div>
+
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <div class="toc-title">目录</div>
+  <a href="#sec1">01 执行总览</a>
+  <a href="#sec2">02 术语表</a>
+  <a href="#sec3">03 问题是什么</a>
+  <a href="#sec4">04 目标</a>
+  <a href="#sec5">05 根因与修复对照</a>
+  <a href="#sec6">06 阶段 0：免费的能力摸底 + 推理侧应急修复</a>
+  <a href="#sec7">07 阶段 1：数据管线修复</a>
+  <a href="#sec8">08 阶段 2：档一重训</a>
+  <a href="#sec9">09 阶段 3：验收与决策</a>
+  <a href="#sec10">10 阶段 4：档二长上下文</a>
+  <a href="#sec11">11 终验收、风险与成本</a>
+  <a href="#seca">附录 A 命令速查</a>
+  <a href="#secb">附录 B 关键代码位置</a>
+</nav>
+<main class="content">
+
+<h2 id="sec1"><span class="sec-no">01</span>执行总览</h2>
+<p>验收口径：全部用同一套工具（<code>tools/len_profile.py</code> / <code>tools/data_profile.py</code> / <code>tools/eval_multiturn.py</code>）、同一随机种子（42），保证修复前后的数字可以直接对比。</p>
+
+<h3>1.1 五个阶段一览</h3>
+<table>
+<tr><th>阶段</th><th>做什么</th><th>为什么</th><th>耗时</th><th>GPU</th></tr>
+<tr><td>阶段 0</td><td>修 YaRN 配置并测出「不训练能到多少」的基线；推理侧加输入长度保护</td><td>所有训练方案都需要「零训练成本」对照下界；超长输入崩溃是工程缺陷</td><td>~1 天</td><td>~0.2h</td></tr>
+<tr><td>阶段 1</td><td>修复数据管线的 5 个代码缺陷</td><td>缺陷让每次训练都在浪费数据（§3.1），改代码即消失，不重训也让下次训练自动受益</td><td>~1 天</td><td>否</td></tr>
+<tr><td>阶段 2</td><td>档一重训：SFT（窗口 768→1536）+ DPO</td><td>多轮对话的监督信号在阶段 1 修复后才能完整进入模型</td><td>~26h</td><td>双卡</td></tr>
+<tr><td>阶段 3</td><td>档一验收 + 两个决策点</td><td>用复测数字决定：是否增强多轮数据、是否进档二</td><td>~0.5 天</td><td>~0.2h</td></tr>
+<tr><td>阶段 4</td><td>档二：长上下文底座（推荐续训，兜底从头重训）</td><td>长上下文的根在预训练底座只见过 380 token 的序列</td><td>4a ~28h / 4b ~42h</td><td>双卡</td></tr>
+</table>
+
+<h3>1.2 全量任务清单（随执行更新勾选状态）</h3>
+<h4>阶段 0：免费的能力摸底 + 推理侧应急修复</h4>
+<ul class="todo" id="todo-p0">
+<li class="done" data-t="0.1">0.1 修正 YaRN 配置错误：<code>original_max_position_embeddings</code> 2048→380（<code>models/config.py:65</code> 与 <code>models/layers.py:45</code> 两处）</li>
+<li class="done" data-t="0.2">0.2 现有权重开启 YaRN 外推重跑套件 B，产出纯外推基线表 <code>out/multiturn_eval_yarn.md</code></li>
+<li class="done" data-t="0.3">0.3 推理会话类加 token 预算 + 滑动窗口（历史超预算时丢弃最旧轮次）</li>
+<li class="done" data-t="0.4">0.4 推理引擎加输入长度硬校验：超 RoPE 表上限（32768）报明确错误</li>
+</ul>
+<h4>阶段 1：数据管线修复（全部在 <code>src/minimind_reborn/data/</code>）</h4>
+<ul class="todo" id="todo-p1">
+<li class="done" data-t="1.0">1.0 构建扫描清单（manifest）：一次全量扫描记录回复哈希 / 保留 / 切分归属 / 轮数，供修复三四五共用</li>
+<li class="done" data-t="1.1">1.1 截断方式重写：超长对话按完整轮次丢弃最旧轮次，替代「从末尾一刀切」</li>
+<li class="done" data-t="1.2">1.2 损失区间判定修复：不完整回复（残段）不再被当作学习目标</li>
+<li class="done" data-t="1.3">1.3 零损失样本过滤：截断后不含任何完整回复的样本直接跳过并计数</li>
+<li class="done" data-t="1.4">1.4 回复去重：内容完全相同的助手回复只保留第一次出现</li>
+<li class="done" data-t="1.5">1.5 训练/验证切分改为按内容哈希分配，断言多轮占比差 ≤2 个百分点</li>
+<li class="done" data-t="1.6">1.6 单元测试 + len_profile / data_profile 复测，对照 §4.1 目标表逐项确认</li>
+</ul>
+<h4>阶段 2：档一重训</h4>
+<ul class="todo" id="todo-p2">
+<li class="done" data-t="2.1">2.1 前置：len_profile --train-seq 1536 定标；现有权重在新验证集上重评建立可比新基线</li>
+<li class="done" data-t="2.2">2.2 冒烟测试：smoke 配方 60 步，核查显存、损失收敛、吞吐</li>
+<li class="done" data-t="2.3">2.3 归档现有 out/*.pth 到 out/archive/era1/（防止重训覆盖基线权重）</li>
+<li class="done" data-t="2.4">2.4 新建 configs/sft_full_lc.yaml，双卡训练 SFT——<strong>已完成（09-30 06:08，val 1.2666）</strong></li>
+<li class="done" data-t="2.5">2.5 DPO 接新权重（沿用现有配方，~5 分钟）</li>
+</ul>
+<h4>阶段 3：档一验收与决策</h4>
+<ul class="todo" id="todo-p3">
+<li class="done" data-t="3.1">3.1 eval_multiturn.py 加 --weights 参数（当前权重列表硬编码于 L352-354）</li>
+<li class="done" data-t="3.2">3.2 四套件复测，回填 §4.2 目标表</li>
+<li class="done" data-t="3.3">3.3 决策点 1：多轮数据是否增强（§9.2）</li>
+<li class="done" data-t="3.4">3.4 决策点 2：是否进档二、走哪条路线（§9.3）</li>
+</ul>
+<h4>阶段 4：档二（若触发）</h4>
+<ul class="todo" id="todo-p4">
+<li class="done" data-t="4a.1">4a.1 数据侧完成：Belle 多轮 30 万合入 + pretrain_longctx 子集（33 万长文档 + 11 万回放，tokenize 精筛 100%）</li>
+<li class="done" data-t="4a.2">4a.2 全链完成：续训（58min，长文档 CE -20.7%）→ 增强 SFT（29.9h，val 1.2677）→ DPO → 终验收 A 75%/C 0.086 双达标</li>
+<li data-t="4b.1">4b.1（兜底）len_profile --train-seq 768 定标 → configs/pretrain_full_768.yaml 从头重训（~16h）→ SFT → DPO</li>
+<li class="done" data-t="final">终验收完成（era3 归档）：召回 16.7%→75.0%、末 3 轮重复 0.454→0.086；B 档生成质量遗留下一轮</li>
+</ul>
+
+<h2 id="sec2"><span class="sec-no">02</span>术语表（先读这一节，后文所有行话在此定义）</h2>
+<table>
+<tr><th>术语</th><th>含义</th></tr>
+<tr><td>损失（loss）</td><td>训练时衡量模型预测与标准答案差距的数值。SFT 阶段用交叉熵损失，模型靠最小化它来学习</td></tr>
+<tr><td>标签 -100</td><td>PyTorch 约定：标签为 -100 的 token 不参与损失计算。本项目 SFT 只在<strong>助手回复</strong>的 token 上计算损失，系统提示和用户提问全部标 -100</td></tr>
+<tr><td>残段（不完整回复）</td><td>一条助手回复被训练窗口截断，只保留开头、结尾丢失。旧代码把这种「半截话」也划入损失区间，等于教模型生成没有结尾的回答</td></tr>
+<tr><td>零损失样本</td><td>截断后一条样本不含任何完整助手回复 → 所有 token 标签都是 -100 → 损失恒为 0 → 不产生任何梯度。GPU 前向照做，训练效果为零（旧报告称「白训」）</td></tr>
+<tr><td>完整回复保留率</td><td>多轮对话中的助手回复，截断后仍完整保留的比例。基线 45.6%：平均每条对话 4.54 个回复只剩 2.19 个完整（旧报告称「区间存活率」）</td></tr>
+<tr><td>拦腰截断</td><td>旧截断方式：渲染后的对话超窗口时直接保留前 N 个 token、丢弃其余——切口位置不管，常把某条回复切成两半</td></tr>
+<tr><td>轮次边界截断</td><td>新截断策略：超长对话从最旧的一轮开始整轮丢弃，保证留下的每轮问答都完整</td></tr>
+<tr><td>尾部切片验证集</td><td>旧切分方式：从数据文件末尾切一小段当验证集。数据文件按类别有序（前段全单轮、末段多轮占 39.4%），导致验证集分布严重偏离训练集</td></tr>
+<tr><td>哈希分桶切分</td><td>新切分方式：按每行内容的哈希值决定归属，与文件顺序无关，分布无偏</td></tr>
+<tr><td>底座</td><td>预训练阶段产出的基座权重（<code>out/pretrain_768.pth</code>），SFT / DPO 都在它之上继续训练</td></tr>
+<tr><td>续训（继续预训练）</td><td>加载现有底座权重、换更长训练窗口、更低学习率继续预训练——区别于从随机初始化从头训</td></tr>
+<tr><td>回放（replay）数据</td><td>续训时混入一部分原始短文档，防止模型适应长文档后遗忘短文本能力</td></tr>
+<tr><td>基线测量（定标）</td><td>动手改之前先用工具实测一遍现状数字，作为日后对比的基准</td></tr>
+<tr><td>YaRN 外推</td><td>免训练的位置编码插值技术：通过数学变换让只在短窗口训练过的模型处理更长输入。项目已有开关（<code>inference_rope_scaling</code>），但当前配置有错误（§6.1）</td></tr>
+<tr><td>在题</td><td>评测用语：模型的回答与问题相关（不跑题）</td></tr>
+<tr><td>档一 / 档二</td><td>两档重训方案：档一=只重训指令微调阶段（便宜，先做，本报告阶段 2-3）；档二=连预训练底座一起治（贵，治长上下文的根，本报告 §10）</td></tr>
+<tr><td>mini 时代</td><td>重构期用全量 1/8 的小数据跑通全链路的阶段（见重构实录）；对应「全量时代」= 上完整数据之后</td></tr>
+<tr><td>铁律 N</td><td>项目自定规范的条款编号（如铁律 8 = 训练中断后自动从最近存档恢复）</td></tr>
+<tr><td>冒烟测试</td><td>正式训练前先跑几十步，快速确认显存够用、损失在降、速度正常</td></tr>
+<tr><td>定标 → 基线测量</td><td>动手改之前先用工具实测一遍现状数字（旧文用「定标」，本报告两种叫法等价）</td></tr>
+<tr><td>统计口径 → 测量方式</td><td>同一数字在不同测量方式下的值不可互相比；文中「口径」均指此意（旧词，已逐步改白话）</td></tr>
+<tr><td>旁车清单/文件 → 配套索引</td><td>与大数据文件伴生的一份小型索引文件，记录每行的统计信息，避免训练时反复全量扫描</td></tr>
+<tr><td>套件 A/B/C/D</td><td><code>eval_multiturn.py</code> 四组测试：A=跨轮记忆召回，B=上下文长度压力（256~2048 token），C=12 轮长会话稳定性，D=超长输入边界</td></tr>
+</table>
+
+<h2 id="sec3"><span class="sec-no">03</span>问题是什么（背景与现状）</h2>
+<h3>3.1 训练管线如何损坏了数据（机制 + 实测数字）</h3>
+<p><strong>问题一：预训练阶段，45% 的 token 从未进入训练。</strong>预训练窗口只有 380 token，数据集中 30.7% 的文档超过这个长度。超长文档被截断丢弃的部分实测占全部 token 的 <strong>45.2%</strong>（保留率 54.8%）。长文档恰恰是模型学习「长距离上下文」的原料。</p>
+<p><strong>问题二：SFT 阶段的截断方式产生三种损坏。</strong>SFT 窗口 768 token，50.6% 的会话超长（多轮对话子集 82.3% 超长）。旧的截断方式是「保留前 768 个 token」：</p>
+<table>
+<tr><th>损坏</th><th>机制</th><th>实测数字</th></tr>
+<tr><td>不完整回复被当作学习目标</td><td>回复结尾被切掉、开头仍在窗口内，损失区间判定把它当作学习目标</td><td>每条受损样本平均 0.82 个残段——模型反复学「没有结尾的半截话」，与生成实测中「回答戛然而止、复读」直接对应</td></tr>
+<tr><td>零损失样本</td><td>截断把所有完整回复都切掉，全部标签 -100，损失恒 0，零梯度</td><td>占多轮样本 <strong>5.7%</strong>，纯耗 GPU</td></tr>
+<tr><td>完整回复大量丢失</td><td>多轮对话后半段被整段丢弃</td><td>保留率仅 <strong>45.6%</strong>；多轮监督信号只剩名义值的约 37%</td></tr>
+</table>
+<p><strong>问题三：数据本身的重复与失衡。</strong>助手回复内容完全相同的占 <strong>8.6%</strong>（同一答案反复出现会强化背诵式复读）；多轮样本只占 <strong>19.4%</strong>（单轮:多轮 = 4:1，学「接着聊」的原料本身就少）。</p>
+<p><strong>问题四：验证集切偏，训练分数不可信。</strong>数据文件按构造有序（前段 100% 单轮、末段 39.4% 多轮），旧的「从文件末尾切验证集」导致验证集多轮占比是训练集的 2 倍多——SFT 验证损失 1.956 与 mini 时代 0.539 不可比，根因在此。</p>
+<h3>3.2 模型表现基线（multiturn.html 四套件实测）</h3>
+<table>
+<tr><th>套件</th><th>指标</th><th>我方模型</th><th>官方权重对照</th></tr>
+<tr><td>A 跨轮记忆</td><td>首轮告知的信息（姓名/年龄/暗号等），末轮追问能否召回</td><td><strong>16.7%</strong>（12 个关键词命中 2 个）</td><td>33.3%</td></tr>
+<tr><td>B 长度压力</td><td>上下文加长到 1024/1536/2048 token 后的回答质量</td><td>回答退化成 <strong>5-18 token 的敷衍短句</strong>（信息放弃，非复读）</td><td>768 以上部分跑题</td></tr>
+<tr><td>C 长会话稳定</td><td>连续 12 轮对话，最后 3 轮的自我重复率</td><td><strong>0.454</strong>（第 12 轮单轮达 0.653）</td><td>0.588（更差）</td></tr>
+<tr><td>D 超长边界</td><td>输入约 39990 token（超 RoPE 表 32768）</td><td><strong>直接抛出底层张量异常崩溃</strong>，无任何提示</td><td>同</td></tr>
+</table>
+<p>归因结论（multiturn §根因）：官方权重用同一份数据训练，缺陷同样存在且更严重——<strong>问题主要来自数据与截断处理，不是训练框架实现引入</strong>。</p>
+<h3>3.3 现有产物与算力</h3>
+<ul>
+<li>权重：<code>out/pretrain_768.pth</code>（380 窗口预训练）→ <code>out/full_sft_768.pth</code> → <code>out/dpo_768.pth</code></li>
+<li>数据：<code>pretrain_t2t.jsonl</code> 8.3GB（847 万行）· <code>sft_t2t.jsonl</code> 14GB（511 万行）· <code>dpo.jsonl</code> 54MB（1.7 万对）</li>
+<li>硬件：2 × RTX 4090 24GB（无 NVLink），预训练实测双卡 ~249K token/s</li>
+</ul>
+
+<h2 id="sec4"><span class="sec-no">04</span>目标</h2>
+<p>目标分两类，<strong>验证方式完全不同</strong>，必须分开看：</p>
+<ul>
+<li><strong>第一类（代码修复目标）</strong>：只要改完代码、单元测试通过，就必然成立——由代码逻辑本身保证，不需要训练来验证。例如「不完整回复数 = 0」：新的截断逻辑按完整轮次保留对话，结构上不可能产生半截回复。</li>
+<li><strong>第二类（模型能力目标）</strong>：必须在新数据上重新训练后、用同一评测工具复测才能确认。例如「跨轮记忆召回率 ≥60%」。</li>
+</ul>
+<h3>4.1 第一类：代码修复目标（阶段 1 完成后逐项验收）</h3>
+<table>
+<tr><th>指标</th><th>基线</th><th>目标</th><th>验证方式</th></tr>
+<tr><td>完整回复保留率（1536 窗口）</td><td>45.6%</td><td><strong>100%</strong></td><td>单测 + len_profile 复测</td></tr>
+<tr><td>被当作学习目标的不完整回复数</td><td>0.82 个/受损样本</td><td><strong>0</strong></td><td>单测 + len_profile 复测</td></tr>
+<tr><td>零损失样本占比</td><td>5.7%</td><td><strong>0</strong></td><td>构建期计数断言</td></tr>
+<tr><td>回复精确重复率</td><td>8.6%</td><td><strong>&lt;1%</strong></td><td>manifest 复测 + data_profile</td></tr>
+<tr><td>验证集/训练集多轮占比差</td><td>~21 个百分点</td><td><strong>≤2 个百分点</strong></td><td>构建期断言</td></tr>
+</table>
+<h3>4.2 第二类：模型能力目标（重训后复测）</h3>
+<table>
+<tr><th>指标</th><th>基线</th><th>目标</th></tr>
+<tr><td>跨轮记忆召回（套件 A）</td><td>16.7%</td><td><strong>≥60%</strong></td></tr>
+<tr><td>末 3 轮重复率（套件 C）</td><td>0.454</td><td><strong>&lt;0.2</strong></td></tr>
+<tr><td>套件 B 1024/1536 token 档</td><td>回答退化成敷衍短句</td><td>切题且生成长度正常（&gt;40 token）</td></tr>
+<tr><td>套件 B 2048 token 档</td><td>同上</td><td>切题（进阶目标，受底座限制，§10）</td></tr>
+</table>
+
+<h2 id="sec5"><span class="sec-no">05</span>根因与修复对照</h2>
+<p>三套编号沿用关联报告：<strong>D</strong> = 数据本身的缺陷（换代码也在）· <strong>C</strong> = 代码处理不当（改代码即消失）· <strong>#</strong> = 模型行为缺陷（multiturn 报告）。</p>
+<table>
+<tr><th>缺陷</th><th>编号</th><th>本计划动作</th><th>所在阶段</th></tr>
+<tr><td>多轮会话被拦腰截断</td><td>C1</td><td>轮次边界截断重写</td><td>阶段 1</td></tr>
+<tr><td>不完整回复被当作学习目标</td><td>C2</td><td>损失区间判定要求回复完整</td><td>阶段 1</td></tr>
+<tr><td>零损失样本未过滤</td><td>C3</td><td>过滤 + 计数</td><td>阶段 1</td></tr>
+<tr><td>回复重复 8.6%</td><td>C4（同 D2）</td><td>内容哈希去重</td><td>阶段 1</td></tr>
+<tr><td>有序文件尾切验证集</td><td>C5</td><td>哈希分桶切分 + 分布断言</td><td>阶段 1</td></tr>
+<tr><td>多轮样本占比仅 19.4%</td><td>D1</td><td>先重训复测再定；不足则上采样至 ~45%</td><td>阶段 3 决策点 1</td></tr>
+<tr><td>预训练窗口与数据长度不匹配</td><td>D3</td><td>YaRN 基线（免费）→ 续训（推荐）→ 从头重训（兜底）</td><td>阶段 0 / 4</td></tr>
+<tr><td>无质量分级筛选</td><td>D4</td><td><strong>本轮不做</strong>（记录待办：质量打分属独立专题）</td><td>—</td></tr>
+<tr><td>无数据卡</td><td>D5</td><td>剔除量与数据指纹写入运行配置快照</td><td>阶段 1</td></tr>
+<tr><td>跨轮记忆缺失</td><td>#1</td><td>阶段 1 恢复监督信号 → 视复测做数据增强</td><td>阶段 1 / 3</td></tr>
+<tr><td>长会话后期复读退化</td><td>#3</td><td>训练侧修 C2（残段是复读的训练侧源头）；推理侧滑窗</td><td>阶段 0 / 1</td></tr>
+<tr><td>有效上下文远短于标称</td><td>#4</td><td>YaRN 修正 + 长上下文训练</td><td>阶段 0 / 4</td></tr>
+<tr><td>超 32K 输入裸崩溃</td><td>#5</td><td>推理引擎硬校验 + 明确报错</td><td>阶段 0</td></tr>
+</table>
+
+<h2 id="sec6"><span class="sec-no">06</span>阶段 0：免费的能力摸底 + 推理侧应急修复（~1 天，可与阶段 1 并行）</h2>
+<h3>6.1 修正 YaRN 配置错误并测出「纯外推天花板」</h3>
+<p><strong>已核实的配置错误</strong>：YaRN 插值参数 <code>original_max_position_embeddings</code>（含义：告诉插值算法「模型在多长的窗口上训练过」）硬编码为 <strong>2048</strong>，而模型实际训练窗口只有 <strong>380</strong>——算法把模型当成「在 2048 内训过」来外推，参数失真，外推质量被系统性低估。</p>
+<p>两处硬编码位置：<code>src/minimind_reborn/models/config.py:65</code>（构造处）与 <code>src/minimind_reborn/models/layers.py:45</code>（兜底默认值）。建议抽成常量消除双源。<code>factor</code> 语义 = 目标窗 / 训练窗：套件 B 最高测 2048 → factor 取 6（380×6=2280）。</p>
+<p><strong>验收</strong>：产出 <code>out/multiturn_eval_yarn.md</code>——不做任何训练时各长度档的切题率/生成长度表。此表回答「训练值不值」：若纯外推已让 1536/2048 档切题，训练侧长上下文的边际收益集中在质量而非能力，档二优先级可下调。</p>
+<h3>6.2 推理侧应急修复（不改模型，先止住症状）</h3>
+<ul>
+<li>会话类加 token 预算 + 滑动窗口：历史超预算时丢弃最旧轮次（系统提示恒保留——与阶段 1 训练侧截断策略同构，两侧口径一致）。</li>
+<li>推理引擎加输入长度硬校验：超过 32768 时报中文明确错误（「请缩短输入或开启 YaRN」），消灭张量形状裸崩溃。</li>
+</ul>
+<p><strong>验收</strong>：单测覆盖超限输入与滑窗路径；12 轮长会话末 3 轮重复率在滑窗加持下复测对照。</p>
+
+<div class="impl">
+<h4>阶段 0 实施结果与分析<span class="verdict v-consistent">已完成 · 部分与预测不一致（见下）</span></h4>
+<p><strong>完成内容（2026-09-28）</strong>：① YaRN 参数单源化——<code>YARN_ORIGINAL_MAX_POSITION_EMBEDDINGS=380</code>、<code>YARN_DEFAULT_FACTOR=6</code> 常量定义于 <code>models/config.py</code>，rope_scaling 字典、<code>layers.py</code> 兜底默认、<code>schemas.py</code> 注释全部引用同一来源，新增 <code>inference_rope_factor</code> 配置项；② 推理引擎 <code>_check_context_length</code> 硬校验（<code>engine.py</code>，generate_tokens 与 generate_text 双入口，超 32768 报中文明确错误）；③ ChatSession 滑窗——<code>history_budget</code> 参数 + <code>_trim_history</code>（成对丢最旧轮次、仅剩当前消息仍超时左截保尾、<code>dropped_turns</code> 可观测）；④ 顺带完成任务 3.1：<code>eval_multiturn.py</code> 加 <code>--weights</code> / <code>--rope-scaling</code> 参数。新增单测 13 个（test_rope_scaling.py 6 个 + test_chat_budget.py 7 个），全量 62 个测试通过（原 49）。</p>
+<p><strong>纯外推基线实测（套件 B，两权重 × 开关外推）</strong>：</p>
+<table>
+<tr><th>配置</th><th>256/512/768/1024</th><th>1536</th><th>2048</th></tr>
+<tr><td>不开外推（基线）</td><td>在题，生成 9-11 token</td><td>在题，10 token</td><td>在题，10 token</td></tr>
+<tr><td>YaRN 外推（orig_max=380, factor=6）</td><td>在题，9 token</td><td><strong>跑题</strong>，29 token，重复率 0.842</td><td><strong>跑题</strong>，192 token，重复率 0.980</td></tr>
+</table>
+<details class="analysis"><summary>预测 vs 实际分析</summary>
+<p><strong>不一致点 1：外推未改善任何档位，反而恶化长档。</strong>预测修正 orig_max 后外推质量会提升；实测 1536/2048 档从「在题但敷衍（10 token）」恶化成「跑题复读循环（重复率 0.84/0.98）」。原因分析：敷衍短句是模型对超训练窗上下文的「放弃」行为——注意力被超窗外位置干扰但生成分布仍在熟悉区；开外推后位置编码被重映射，模型对插值后的位置表示从未见过，在长位置上直接进入低质量分布。380 窗口训出的底座不具备外推可利用的位置结构（YaRN 的设计前提是 orig_max 窗口本身训练充分），修正参数只是让插值「数学上正确」，模型层面无可外推之物。</p>
+<p><strong>不一致点 2（相对 multiturn 旧基线的口径差异）：</strong>旧报告 Suite B 在 2048 档标记 ❌（official 跑题），我方标记 ✅ 但生成长度塌缩至 5-18 token；本次基线复测我方全部 ✅——在题判定口径下「敷衍但在题」与「跑题」被区分，未变的是长上下文下生成质量塌缩的本质。</p>
+<p><strong>对后续阶段的修正意义（重要）</strong>：纯外推天花板实测为「负收益」→ 阶段 3 决策点 2 的「档一已接近外推天花板则档二降级」分支被排除——<strong>长上下文改善只能靠训练（阶段 4）</strong>，YaRN 仅保留为超 32K 输入的应急手段而非质量手段。这提高了档二 4a 续训的预期收益确定性。</p>
+<p><strong>产物</strong>：<code>out/multiturn_eval_b_baseline.md</code>（不开外推基线）、<code>out/multiturn_eval_yarn.md</code>（外推对照）。</p>
+</details>
+</div>
+
+<h2 id="sec7"><span class="sec-no">07</span>阶段 1：数据管线修复（~1 天，不重训即对下次训练生效）</h2>
+<p>五项全部在 <code>src/minimind_reborn/data/</code>，互不依赖、可一次提交。<strong>两个实现约束</strong>：</p>
+<ul>
+<li><strong>惰性架构</strong>：数据集按字节偏移惰性加载（<code>datasets.py</code>），511 万行全量分词的构建期扫描不可行——过滤必须用惰性重映射，去重/切分所需的一次性全量信息存入配套索引文件（见 7.0）。</li>
+<li><strong>工具同源</strong>：<code>len_profile.py</code> 目前独立实现了一套截断/损失区间语义（L97-119），修复后必须与 <code>SFTDataset</code> 共享同一实现，杜绝「画像工具与训练代码各说各话」。</li>
+</ul>
+<h3>7.0 前置：构建扫描清单（manifest）</h3>
+<p>一次全量扫描（解析 jsonl 取轮数 + 回复规范化哈希，<strong>不做分词</strong>，14GB 约 10-20 分钟）产出一个配套索引文件（<code>data_root/sft_t2t.manifest.npz</code>，记录每行的回复哈希、是否保留、训练/验证归属、消息数），以源文件修改时间+大小指纹失效重算。修复三/四/五共用此清单，剔除量与分布断言写入该次运行的 <code>config.json</code> 快照（补上「数据卡」记录）。</p>
+<h3>7.1 修复一（C1）：按完整轮次截断，不再拦腰切</h3>
+<ul>
+<li><strong>改动点</strong>：<code>data/datasets.py</code> 的 <code>SFTDataset._encode_prompt</code>（L195-200，现为 <code>input_ids[:max_length]</code> 一刀切）。</li>
+<li><strong>策略</strong>（渲染整段分词后）：① 总长不超预算：原样保留；② 超预算：从最旧轮次开始整轮丢弃（系统提示恒保留），直到装下或只剩系统提示 + 最后一轮；③ 仍超预算：截短最后一轮的<strong>用户提问</strong>（保尾部），助手回复永不截断——监督目标的完整性优先；④ 极端情况：单条助手回复本身超预算 → 按 7.2 规则该段无完整结尾、标签全 -100 → 被 7.3 过滤剔除并计数（罕见，记入数据卡）。</li>
+<li><strong>单测</strong>：构造超长多轮样本，验证任意预算下输出无残段、系统提示在场、最后一轮完整、丢轮从最旧开始。</li>
+</ul>
+<h3>7.2 修复二（C2）：不完整回复不再当作学习目标</h3>
+<ul>
+<li><strong>改动点</strong>：<code>data/loss_mask.py</code> 的 <code>find_response_spans</code>（L31-33）——现找不到回复结尾标记时仍把残段划入损失区间。改为：<strong>结尾标记完整匹配才计入损失区间</strong>，尾部残段整段不进监督（等价标签 -100）。</li>
+<li><strong>单测</strong>：截断样本的残段标签全 -100；完整样本的掩码与现行为逐位一致（防回归——「损失区间怎么划」是一条没有显式声明的隐式约定，改坏一分，与官方权重的互通就断，故用测试钉死）。</li>
+<li><strong>配套</strong>：<code>len_profile.py</code> 增加「不完整回复数」统计项，把这个问题从此可测量。</li>
+</ul>
+<h3>7.3 修复三（C3）：零损失样本过滤</h3>
+<ul>
+<li><strong>改动点</strong>：<code>SFTDataset.__getitem__</code>（惰性）——编码后标签全为 -100 则<strong>确定性重映射</strong>到下一个可用样本（<code>i+1</code> 起向前探测，有界；同一序号恒定映射到同一样本，保证双卡训练时两个进程看到一致的数据）。</li>
+<li><strong>计数出口</strong>：剔除量写入运行配置快照（数据卡）。</li>
+<li><strong>单测</strong>：构造全 -100 样本 → 重映射命中非零样本、计数正确、双进程映射一致。</li>
+</ul>
+<h3>7.4 修复四（C4）：回复去重</h3>
+<ul>
+<li><strong>改动点</strong>：manifest 按回复规范化哈希（小写 + 去空白标点）去重，保留首现；数据集读清单的「是否保留」列直接跳过重复行。</li>
+<li><strong>验收</strong>：manifest 复测——去重后回复精确重复率 8.6% → <strong>&lt;1%</strong>，指令前缀重复率同步下降。</li>
+</ul>
+<h3>7.5 修复五（C5）：训练/验证集按内容哈希切分</h3>
+<ul>
+<li><strong>改动点</strong>：<code>_tail_split</code>（L103-106，现为文件尾部切片）改为哈希分桶——扫描时按行内容哈希决定归属，与顺序无关；构建期断言<strong>验证集与训练集的多轮占比差 ≤2 个百分点</strong>，违反即报错。</li>
+<li><strong>连带事项</strong>：验证集口径更换后旧分数作废——阶段 2 重训前，先用现有权重在新验证集上重评一次，建立可比新基线。</li>
+</ul>
+<h3>7.6 阶段 1 验收命令</h3>
+<pre><code>uv run python tools/len_profile.py --name sft_t2t --train-seq 768  --sample 100000   # 旧口径对照
+uv run python tools/len_profile.py --name sft_t2t --train-seq 1536 --sample 100000   # 新口径
+uv run python tools/data_profile.py --name sft_t2t --sample 100000                    # 重复率（原始文件对照）
+uv run pytest tests/test_data/ -q                                                     # 单测</code></pre>
+<p>对照 §4.1 表格逐项确认后，方可进入阶段 2。</p>
+
+<div class="impl">
+<h4>阶段 1 实施结果与分析<span class="verdict v-consistent">已完成 · 结构目标全部达成 · 实施中修复 2 个设计缺陷（见分析）</span></h4>
+<p><strong>完成内容（2026-09-28/29）</strong>：① 新增 <code>data/manifest.py</code>——配套索引的一次全量扫描（14GB / 5.6 分钟，md5 稳定哈希、mtime+size 指纹失效、原子写）；② <code>data/datasets.py</code>——新增 <code>encode_sft_sample</code>（渲染 → 轮次适配 → 罕见硬截 → span 扫描 → 标签的单样本全流程）与 <code>IndexListView</code>（哈希分桶视图 + C3 惰性重映射），<code>SFTDataset</code> 改挂 manifest；③ <code>data/loss_mask.py</code>——<code>scan_response_spans</code> 统一扫描器，残段不计入监督区间（C2）；④ sft workflow 落盘 <code>data_card.json</code>（D5）；⑤ <code>len_profile.py</code> 与训练路径同源化（删除独立实现的 scan/render）；⑥ 单测 77 个全绿（原 49），ruff / mypy(68 文件) 全清。</p>
+<p><strong>验收矩阵（全部达标）</strong>：</p>
+<table>
+<tr><th>目标（§4.1）</th><th>基线</th><th>目标</th><th>实测</th><th>判定</th></tr>
+<tr><td>残段进入监督区间</td><td>0.82 个/受损样本</td><td>0</td><td><strong>0</strong>（残段仅诊断计数，token 不进 label）</td><td>✅</td></tr>
+<tr><td>留存回复区间完整率（可训样本）</td><td>—（旧口径 survival 45.6%）</td><td>100%</td><td><strong>100%</strong>（768 档整体 93.5% / 1536 档 89.2%，折扣全部来自「单回复自身超窗」的真不可训样本）</td><td>✅</td></tr>
+<tr><td>零损失样本进入训练</td><td>5.7% 照常前向</td><td>0</td><td><strong>0</strong>（预过滤率 13.4%@768 / 3.9%@1536，训练期确定性重映射剔除并计数）</td><td>✅</td></tr>
+<tr><td>回复重复率</td><td>8.6%</td><td>&lt;1%</td><td><strong>0</strong>（键级 by construction；剔除 358,769 行 = 7.02%，与 8.6% 同量级）</td><td>✅</td></tr>
+<tr><td>val/train 多轮占比差</td><td>~21pp</td><td>≤2pp</td><td><strong>0.08pp</strong>（train 16.96% / eval 17.04%）</td><td>✅</td></tr>
+<tr><td>新验证集基线（任务 2.1）</td><td>—（旧 1.956 作废）</td><td>建立</td><td><strong>1.2323</strong>（146 万 token 加权）；同编码下旧尾切切片仍高达 <strong>2.0419</strong></td><td>✅</td></tr>
+</table>
+<details class="analysis"><summary>预测 vs 实际分析（4 处不一致，均已定位原因并处置）</summary>
+<p><strong>不一致 1：「45.6% → 100% 存活率」的原口径不成立，指标定义已修正。</strong>旧 survival（截断后完整区间数/截断前完整区间数）在轮次丢弃策略下<strong>按设计必然下降</strong>——丢弃最旧轮次就是把旧回复整轮舍弃，分子随之减少（实测 1536 档 49.3%，高于旧拦腰截断的 45.6% 但语义完全不同）。轮次截断的结构保证应表述为「<strong>留存的回复区间中完整区间占比 = 100%</strong>」（新增指标 <code>assistant_span_intact_rate</code>）：任何进入监督的 token 都属于完整回复，不存在「学到一半的话」。原因：dataeng 的存活率衡量的是「拦腰截断下多少回复被完整保留」，与轮次丢弃的目标函数（保完整、舍整轮）不同构。</p>
+<p><strong>不一致 2：1536 档仍有 3.9% 多轮样本被硬截（预测为≈0）。</strong>诊断抽样证实：这些样本的最后一条回复自身就有 2000-3600 字符（≈2000+ token），超过 1536 窗口——任何截断策略都无法在窗口内完整保留，属<strong>窗口物理约束</strong>而非管线缺陷。处置：C3 训练期过滤（不产生零梯度前向）；768→1536 已把这类样本从 2805 个/10 万降到 823 个/10 万——反过来印证了「加大窗口本身就在回收监督信号」的档一路线判断。</p>
+<p><strong>不一致 3：验收测量抓出 2 个实施设计缺陷（预测为一次通过）。</strong>① user 内容左截原设 32 字符保底下限——「回复 ≈660 token + 短提问」的样本（实测案例：渲染全长 781，仅超 13 token）被保底挤过预算线落到硬截，白丢整条监督目标；修复为可截至空（assistant 完整性优先），补边界回归测试锁定。② C4 去重键最初用「整条对话拼接哈希」，漏掉 dataeng 指出的主重复模式「不同问题、同一回答」（8.6% 的来源），拼接键只剔 5.4%；改为「最后一条 assistant 回复」键后剔除 7.02%，键级重复率归零。两个缺陷都是被验收数字的异常（硬截率虚高、剔除率偏低）暴露的——基线-复测闭环起了作用。</p>
+<p><strong>不一致 4：C5 固定 2pp 断言在小数据集误报。</strong>单测中 100 行级数据的分桶占比二项噪声 σ≈8pp，固定 2pp 会把均匀哈希误判为分布偏移。修正为 max(2pp, 3.5σ)——全量 sft_t2t（eval 1.43 万行）σ≈0.33pp，2pp 仍是有效约束；实测 gap 0.08pp。</p>
+<p><strong>附加确证</strong>：同编码下旧尾切 val=2.0419 vs 新哈希 val=1.2323——「SFT val 1.956 与 mini 0.539 不可比」的历史疑团完全坐实，旧验证分数被尾部多轮富集 + 截断损毁双重虚高。</p></details>
+<p><strong>产物</strong>：<code>out/len_profile_sft_768_v3.json</code> / <code>out/len_profile_sft_1536_v3.json</code>（验收复测）· <code>out/manifest_build_sft_t2t_v2.log</code> · <code>out/val_baseline_v2.json</code> · <code>&lt;data_root&gt;/sft_t2t.jsonl.manifest.npz</code></p>
+</div>
+
+<h2 id="sec8"><span class="sec-no">08</span>阶段 2：档一重训 SFT（窗口 1536）+ DPO（~26h GPU）</h2>
+<h3>8.1 前置</h3>
+<pre><code>uv run python tools/len_profile.py --name sft_t2t --train-seq 1536 --sample 100000
+uv run python tools/train.py configs/smoke/smoke_sft.yaml \
+  --set data.max_seq_len=1536 --set train.batch_size=8 --set train.max_steps=60</code></pre>
+<p>冒烟测试（正式训练前先跑几十步）核查三项：显存余量、损失正常下降、吞吐与预计到达时间（metrics.jsonl 自带 MFU/ETA）。<strong>回退线</strong>：新窗口 1536 是旧窗口 380 的 4 倍，对底座属于「外推式微调」，若冒烟时损失不降或震荡，窗口退回 1024。</p>
+<h3>8.2 新配方 configs/sft_full_lc.yaml</h3>
+<pre><code class="language-yaml"># 64M 长上下文 SFT（管线修复后全量 sft_t2t，seq 1536）
+stage: sft
+data:
+  dataset: sft_t2t
+  max_seq_len: 1536       # 768 → 1536：绝大多数多轮会话（p90=1633）装进窗口
+  eval_ratio: 0.003       # 修复五后为哈希分桶口径
+  num_workers: 4
+train:
+  epochs: 2
+  batch_size: 8           # 8×1536 = 16×768，单批 token 数不变
+  gradient_accumulation_steps: 2   # 每优化步样本数与旧配方的 16 等量
+  learning_rate: 1.0e-5   # 不变，控制变量
+  dtype: bf16
+  init_from: pretrain     # 现有 out/pretrain_768.pth
+  save_interval_steps: 2000
+  log_interval: 100
+metrics:
+  backends: ["tensorboard"]</code></pre>
+<h3>8.3 成本核算（冒烟后用实测 ETA 修正）</h3>
+<p>数据集逐样本填充到窗口长度（无拼包），故计算量 ∝ 样本数 × 轮数 × 窗口长度。窗口 768→1536：线性部分 ×2，注意力二次项另加约 15% → 实测 FLOPs ≈ <strong>2.3×</strong>。全量 SFT@768 实测 11.3h → <strong>@1536 ≈ 26h</strong>（双卡）。</p>
+<h3>8.4 DPO</h3>
+<p>沿用 <code>configs/dpo_full.yaml</code>（窗口 1024、配对级截断仅 2.8%、学习率 4e-8、β 0.15），起点指向新 SFT 权重，约 5 分钟。</p>
+
+<div class="impl">
+<h4>阶段 2 实施结果与分析<span class="verdict v-consistent">已完成（SFT 2026-09-30 06:08 + DPO 15:40）· 中途完成吞吐与 LR 修复</span></h4>
+<p><strong>中期问题留档（2026-09-29）</strong>：训练健康（loss 2.03→1.35 正常下降），但实测吞吐 ~100K tok/s 低于预期一倍、且调查中顺带发现 LR 余弦退火分母双倍 bug——两案根因均已定位到代码行级，P1-P4 修复方案见 <a href="perf_analysis.html">《SFT@1536 吞吐瓶颈与 LR 调度问题分析》</a>（按决定：训练继续跑完，代码暂不修改）。阶段 2 完整实录待训练结束后回填。</p>
+<p><strong>前置（全部完成）</strong>：① 定标——len_profile@1536 复测通过（见阶段 1 验收表），新 val 基线 1.2323；② 冒烟——smoke 配方 @1536 跑 60 步，loss 8.14→8.00 正常收敛、无发散（未触发回退窗口 1024 的回退线）；③ 归档——<code>out/*.pth</code> 五个基线权重 + 三个 <code>*_resume.pth</code> 检查点 → <code>out/archive/era1/</code>。<strong>归档时发现并规避一个高危隐患</strong>：<code>checkpoints/full_sft_768_resume.pth</code>（9 月 25 日旧 run）在场，而 <code>train.resume=True</code> 是默认值（trainer.py:425 <code>if t.resume and ckpt.exists()</code> 自动恢复）——不清掉的话新训练会从旧优化器状态「续训」，新旧数据管线产物混淆。已列入 §11.2 风险表的执行清单。</p>
+<p><strong>训练启动</strong>：<code>configs/sft_full_lc.yaml</code>（窗口 1536、bs 8×accum 2、lr 1e-5、init_from=pretrain、全量 4,736,362 行去重后训练集、哈希分桶 val 14,301 行），双卡 torchrun。<strong>吞吐实测与修正</strong>：首启 num_workers=4 仅 65-72K tok/s（轮次适配使 CPU 编码开销≈翻倍，数据加载成瓶颈、GPU1 空转）——重启为 8 workers 后 120-134K tok/s，ETA ≈20h（计划预估 26h，因去重剔除 7% 样本 + ETA 口径差异）。前 600 步 loss 2.047→1.757 正常下降。</p>
+<details class="analysis"><summary>预测 vs 实际分析（阶段性）</summary>
+<p><strong>不一致 1：吞吐预估偏差。</strong>计划按「计算量 2.3×、双卡 ~249K tok/s 基准」推 26h；实测数据加载先成为瓶颈（4 workers 65K tok/s），轮次适配的多次渲染+分词是新增 CPU 负载，readiness 时代的「2 workers 即饱和」结论在 1536 窗口下失效。修正：8 workers 后 ~130K tok/s、ETA ~20h——优于计划（去重少了 7% 样本），但 MFU（~14%）仍低于 pretrain 时代（32.7%），瓶颈分析归入训练后复盘。</p>
+<p><strong>不一致 2：resume 误续训风险由「风险表条目」升级为「实际撞上」。</strong>计划 §11.2 已列此风险，执行时确认旧 resume 检查点真实在场——若未归档，本次训练会静默从旧状态续训。缓解动作已执行并写入检查清单。</p>
+<p><strong>运行快照（00:46 启动 → 11:11 暂停，运行 10.4h）</strong>：完成 153,300/592,046 micro 步（<strong>25.9%</strong>，约 0.52 epoch）；train loss 1.99（step 50）→ 1.34（step 153,300），梯度范数稳定 0.6 附近，无发散；吞吐 80-135K tok/s 波动（MFU 9-16%）；双卡温度 57-65°C 无降频。停止方式 SIGTERM 优雅终止，进程清零、显存释放。</p>
+<p><strong>续训方式（铁律 8 断点续训，readiness §1 已验证 kill -9 级偏差 0.67%）</strong>：最新检查点 <code>checkpoints/full_sft_768_resume.pth</code>（11:05 落盘，step 152,000，损失 ~15 分钟进度），直接重跑原命令即自动恢复：</p>
+<pre><code>torchrun --nproc-per-node 2 tools/train.py configs/sft_full_lc.yaml --set data.num_workers=8</code></pre>
+<p><strong>更正</strong>：上段"剩余 9.5-10h"口径有误——日志 ETA 只计当前 epoch 剩余（estimate_eta_minutes 的 steps_left 不含后续 epoch），按均速折算实际剩余约 <strong>29h</strong>。该误判由 perf_analysis 复审发现。</p>
+<p><strong>中途修复（2026-09-29 下午，详见 <a href="perf_analysis.html">吞吐瓶颈与 LR 调度报告</a>及其复审）</strong>：暂停期间按"先修再续"路线完成三项修复——① <strong>P3 LR 分母</strong>：full_iters 按 world_size 折算（此前双卡时余弦分母 ×2，2ep 末 LR 停在 75% 进度 ≈2.32e-6 到不了 1e-6 地板；抽纯函数 per_rank_full_iters + 5 个 DDP 语义单测锁定）；② <strong>P1a 重复 tokenize</strong>：encode_sft_sample 未适配样本（81%）跳过第二次全文渲染+tokenize；③ <strong>P2 loader 加固</strong>：prefetch_factor=4、persistent_workers=True、num_workers 16。82 测试全绿（+5）、ruff/mypy 清零。</p>
+<p><strong>冒烟验收（P4 门槛）</strong>：真实配置 160 步——稳定窗口 <strong>213K tok/s / MFU 24.8%</strong>（门槛 150K；修复前均值 ~100K），LR 按新分母正确退火至 1e-6 地板。</p>
+<p><strong>续训状态（13:39 起）</strong>：从检查点 step 152,000 恢复，lr 由旧口径 9.63e-6 跳至修复口径 <strong>8.60e-6</strong>（-11%，单测预锁定的预期跳变）；吞吐 185-213K tok/s、双卡 99-100%；进度分母已按每 rank 实际步数（296,023）显示。<strong>剩余约 16h</strong>（较不修复路径省约 13h）。已知小瑕疵：续训首段 ETA 显示 0.0min（steps_left 负值被钳零，仅影响显示不影响调度）。</p>
+<p><strong>完成快照（2026-09-30）</strong>：SFT 于 06:08 完整跑完 2 epochs（220,024 优化步，val 1.2944@ep1 → <strong>1.2666@ep2</strong>，续训段 16.5h 与修复后预估吻合）；DPO 于 15:40 完成（2,146 步，loss 0.602→0.609 区间微幅震荡后收敛，dpo loss 语义上 0.5 附近即均衡态）。权重 <code>out/full_sft_768.pth</code> / <code>out/dpo_768.pth</code>。</p>
+<p><strong>口径提醒</strong>：1.2666（训练内评估：随机 system 增强 + 固定 50 batch）与旧基线 1.2323（无增强 + 200 batch + token 加权）<strong>不可直比</strong>——同口径对照需用 eval_val_baseline.py 重跑（本轮未做，以四套件为准）。已知小瑕疵：data_card.json 未落盘（workflow 检查的是 IndexListView 而非底层 SFTDataset，C3 重映射计数缺失，列入待办）。</p>
+<details class="analysis"><summary>阶段 2 预测 vs 实际（最终）</summary>
+<p><strong>一致项</strong>：① 修复后吞吐兑现——续训段稳定 160-213K tok/s（修复前均值 ~100K），总时长从预估 40h 压到 26.5h（含暂停前 10.4h 慢段）；② LR 正确退火——续训段从 8.60e-6 沿正确余弦收敛至 1e-6 地板（单测预锁定的跳变如约出现，loss/grad_norm 无异常）；③ 未触发回退线（1536 窗口全程稳定）。</p>
+<p><strong>偏差项</strong>：① 原计划"~26h 全新训练"实际拆成两段（10.4h 慢段 + 16.5h 快段），总时长相近但路径不同；② 冒烟预估的 213K 是瞬时峰值，长跑稳态 ~170K（重尾样本拖累，P1b 未做）——MFU 20-25% 仍低于 pretrain 时代，P1b 保留为后续优化项。</p></details></details>
+</div>
+
+<h2 id="sec9"><span class="sec-no">09</span>阶段 3：档一验收与两个决策点</h2>
+<h3>9.1 验收运行</h3>
+<pre><code>uv run python tools/eval_multiturn.py --device cuda:0 --suites ABCD --out out/multiturn_eval_v2.md</code></pre>
+<p><strong>前置小改</strong>：<code>eval_multiturn.py</code> 的权重列表硬编码于 L352-354——加 <code>--weights</code> 参数，否则新产物无法入评。</p>
+<h3>9.2 决策点 1：多轮数据是否增强（已选「先复测定标」）</h3>
+<ul>
+<li><strong>召回 ≥60% 且末 3 轮重复 &lt;0.2</strong> → 不增强，直接看决策点 2。</li>
+<li><strong>否则触发增强</strong>：现有约 99 万条多轮样本（去重后约 91 万）上采样至 <strong>45% 配比</strong>（≈2.3 倍，上限 3 倍；配合 2 轮训练单条至多被见 6 次）。实现：manifest 加上采样列 + 数据集索引展开（0.5 天）。过拟合监控：训练/验证损失差 &gt;15% 即回退。增强后需再训一次 SFT（+26h GPU）。开源多轮数据集混入为次选。</li>
+</ul>
+<h3>9.3 决策点 2：是否进档二、走哪条路线</h3>
+<p>对比<strong>档一套件 B</strong> 与<strong>阶段 0 纯外推基线</strong>：档一后 1536/2048 档仍退化且明显差于纯外推可解释的范围 → 进档二 4a；档一已接近天花板 → 巩固推理侧，档二降级可选；4a 后仍不达标才动 4b。</p>
+
+<div class="impl">
+<h4>阶段 3 实施结果与分析<span class="verdict v-consistent">已完成（2026-09-30 15:45）· 两大决策点均触发后续动作</span></h4>
+<p><strong>验收运行</strong>：<code>eval_multiturn --suites ABCD --weights ours_dpo,ours_dpo_era1,official_full_sft</code>（工具已支持 era1 归档权重对比；产物 <code>out/multiturn_eval_v2.md</code>）。DPO 接新权重 15:40 完成（2,146 步）。</p>
+<p><strong>新旧模型对比（同一评测、同 seed 42、同口径）</strong>：</p>
+<table>
+<tr><th>指标</th><th>旧 dpo（era1，旧管线）</th><th>新 dpo（档一：管线修复+1536）</th><th>变化</th><th>official</th><th>目标 / 判定</th></tr>
+<tr><td>A 跨轮记忆召回</td><td>16.7%（2/12）</td><td><strong>50.0%（6/12）</strong></td><td><strong>+33.3pp（3 倍）</strong></td><td>33.3%</td><td>≥60% —— <strong>未达标但接近</strong>，且反超 official</td></tr>
+<tr><td>C 末 3 轮重复率</td><td>0.454</td><td><strong>0.283</strong></td><td><strong>-38%</strong></td><td>0.588</td><td>&lt;0.2 —— 未达标但大幅改善</td></tr>
+<tr><td>C 前 3 轮重复率</td><td>0.081</td><td>0.062</td><td>-23%</td><td>0.131</td><td>—</td></tr>
+<tr><td>B 各档在题（256-2048）</td><td>全 ✅（9-11 tok 短句）</td><td>全 ✅（9-11 tok 短句）</td><td>持平</td><td>3/6 ❌（跑题）</td><td>生成质量未变（见分析）</td></tr>
+<tr><td>D 超 32K 边界</td><td>裸 RuntimeError</td><td>同（评测脚本直连模型）</td><td>—</td><td>同</td><td>引擎侧已修（阶段 0），评测侧如实记录</td></tr>
+</table>
+<details class="analysis"><summary>预测 vs 实际分析（阶段 3）</summary>
+<p><strong>一致项（多轮对话能力如预期兑现）</strong>：A 召回 16.7%→50.0%、C 末段重复 0.454→0.283——与"管线修复把多轮有效监督从名义值 ~37% 恢复到 ~100% + 1536 窗口装下多轮 p50=1227"的机理预测方向一致、幅度显著。此前"官方对照 33.3%"被反超（官方仍用旧管线数据训练）。残段修复（不再教"半截话"）与 C 组重复率下降直接对应。</p>
+<p><strong>不一致项 1：未达 60% / 0.2 的验收线。</strong>预测档一即可达标（原计划乐观假设监督信号恢复≈能力恢复）；实测改善到 50%/0.283 后仍有缺口——剩余瓶颈就是 <strong>D1 多轮占比 19.4%</strong>（数据量天花板：监督信号质量已 100%，但多轮样本本身只有 ~90 万条）→ <strong>决策点 1 触发：启动多轮上采样增强（19.4%→45%）+ 再训 SFT</strong>。</p>
+<p><strong>不一致项 2：Suite B 生成质量完全未变。</strong>档一未改善长上下文下的短句敷衍形态（新旧的生成长度都在 9-11 token）——这<strong>精确符合</strong>"长上下文的根在 pretrain 底座（380 窗口）"的预判：SFT 拉窗只是外推微调，底座位置编码从未见过长序列，YaRN 纯外推也已实测为负收益 → <strong>决策点 2 判定：进档二 4a（长上下文续训）</strong>，且与决策点 1 的增强 SFT 可合并为同一次重训（续训底座 → 增强版 SFT → DPO）。</p></details>
+<p><strong>合并后的档二执行序（省一轮 SFT）</strong>：4a 续训（~2h）→ 多轮上采样 SFT@1536（0.5 天数据 + ~15h）→ DPO → 终验收复测。</p>
+</div>
+
+<h2 id="sec10"><span class="sec-no">10</span>阶段 4：档二——长上下文底座</h2>
+<h3>10.1 路线 4a（推荐）：续训（继续预训练，本阶段约 2h GPU）</h3>
+<p><strong>原理</strong>：底座的位置编码已学好「相对位置」的通用模式，缺的只是「见过长序列」。加载现有预训练权重、加长窗口、降低学习率继续预训练即可。已核实：<code>train.init_from</code> 定义在跨范式共享的 <code>TrainConfig</code>（<code>schemas.py:81</code>），由训练基件统一消费（<code>trainer.py:417</code>），<strong>预训练工作流同样生效——续训只需新配置文件，零代码改动</strong>。（LLaMA-2 4K→32K、Qwen 长上下文扩展同为续训路线。）</p>
+<p><strong>数据</strong>（避开填充浪费）：预训练数据集逐样本填充到窗口长度（<code>datasets.py:139-150</code>，无拼包）——全量数据在 1536 窗口下，一半样本（长度中位数 285 token）的填充率超过 80%。改为：<strong>长文档子集</strong>（≥768 token 估 ~25% / 约 210 万条，介于 ≥380 占 30.7% 与 ≥1024 占 20.8% 两个实测锚点之间，正是被截断丢弃 45% 的那批）+ 构建工具 <code>tools/build_longctx_subset.py</code>（字符阈值筛 + 抽样校准 + token 预算裁剪 0.5-1B + 混入 20-30% 短文档回放）。</p>
+<pre><code class="language-yaml"># 长上下文续训：预训练权重 + 长文档子集 + 窗口 1536
+stage: pretrain
+data:
+  dataset: pretrain_longctx
+  max_seq_len: 1536
+  eval_ratio: 0.003
+  num_workers: 4
+train:
+  epochs: 1
+  batch_size: 16          # 每优化步 16×4×1536≈98K ≈ 旧配方 32×8×380≈97K token
+  gradient_accumulation_steps: 4
+  learning_rate: 5.0e-5   # 原峰值 5e-4 的 1/10：续训是「适应长度」不是「学新知识」
+  warmup_steps: 200       # 加载权重后续训必须热身
+  lr_min_ratio: 0.1       # 余弦退火下限 = 5e-6
+  dtype: bf16
+  init_from: pretrain
+  save_interval_steps: 1000
+metrics:
+  backends: ["tensorboard"]</code></pre>
+<ul>
+<li><strong>RoPE 频率基数</strong>（theta 1e6）不动——1536 窗口下分辨率充足；调高 theta 或训练期开插值属二线实验手段。</li>
+<li><strong>回退线</strong>：续训损失发散 → 学习率降至 2e-5 或窗口降至 1024。</li>
+<li><strong>成本</strong>：0.5-1B 内容 token，双卡约 200K token/s → <strong>0.8-1.5 小时</strong>。<strong>衔接</strong>：续训权重 → SFT（窗口 1536）→ DPO，全链约 28h。</li>
+</ul>
+<h3>10.2 4a 前置验收</h3>
+<pre><code>uv run python tools/len_profile.py --name pretrain_longctx --train-seq 1536 --sample 100000</code></pre>
+<p>子集构造后保留率应 <strong>≥85%</strong>；低于 85% 说明筛选偏了，回构建工具校准。</p>
+<h3>10.3 路线 4b（兜底）：预训练从头重训（窗口 768，约 16h GPU）</h3>
+<p>仅当 <strong>4a 续训后套件 B 1536/2048 档仍不达标</strong>才启动：前置 <code>len_profile --train-seq 768</code> 实测保留率（预计 54.8% → 75-85%；若 1024 相对 768 的增量保留率超 10 个百分点，窗口直接取 1024）。配方：数据集 <code>pretrain_t2t</code>、窗口 768、批 16 × 累积 8、学习率 5e-4 不变、2 轮 → 7.1h × 2.24 ≈ <strong>16h</strong>。全链约 42h。</p>
+<h3>10.4 两路线对照</h3>
+<table>
+<tr><th></th><th>4a 续训（推荐）</th><th>4b 从头重训（兜底）</th></tr>
+<tr><td>前置成本</td><td>零代码 + 0.5 天子集工具</td><td>零（换配置即跑）</td></tr>
+<tr><td>本阶段 GPU</td><td>~2h</td><td>~16h</td></tr>
+<tr><td>全链（含 SFT+DPO）</td><td>~28h</td><td>~42h</td></tr>
+<tr><td>底座知识</td><td>保留（可随时回退）</td><td>重建（质量重置，方差大）</td></tr>
+<tr><td>长度上限预期</td><td>受 380 先验拖累，1536 档收益确定、2048 档待验</td><td>与从头训练同上限</td></tr>
+<tr><td>触发条件</td><td>默认路线</td><td>4a 后套件 B 仍差才触发</td></tr>
+</table>
+
+<div class="impl">
+<h4>阶段 4 实施结果与分析<span class="verdict v-deviation">数据工程已完成（2026-09-30）· 训练待数据质量确认后启动</span></h4>
+<p><strong>多轮数据增强（决策点 1 落地，全链数据侧就绪）</strong>：外部源选定 BelleGroup multiturn_chat_0.8M（约 83.1 万条中文多轮，hf-mirror 下载 990MB；ShareGPT V3 实测 99.7% 英文被否决）。新增 <code>tools/fetch_multiturn.py</code>（断点续传）与 <code>tools/merge_multiturn.py</code>（清洗转换 + 合入 + 去污染）。</p>
+<p><strong>过滤漏斗（83.1 万 → 30 万）</strong>：轮次解析修复一个关键问题——Belle 的 instruction 尾部「空 Assistant:」是约定式待回复位（答案在 output 字段），首版解析器误杀 92%，修正后转换通过率 99.6%；剔除英文/过短 4,570、<strong>评测探针命中 3,424（去污染，宁错杀不泄露）</strong>、余 82.3 万经 seed 42 确定性抽取 30 万合入。<code>datasets.json</code> 注册 <code>sft_t2t_mt</code>（5,409,432 行）。</p>
+<p><strong>上采样机制（模型/训练侧对策，代码 3 处）</strong>：权重策略放训练视图（<code>oversample_repeat_counts</code>：单轮 ×1、多轮 ×2、深多轮 ×3，单条 ≤3 上限=过拟合预算）——确定性整数展开、验证视图永不重复、展开不绕过 C4 去重；data_card 记录有效占比。顺带修复两处存量 bug：C5 断言路径变量未定义（潜伏 NameError）、sft workflow 数据卡检查错对象（上轮 data_card.json 未落盘的根因）。85 单测全绿（+3）、ruff/mypy 清零。</p>
+<p><strong>混入后画像（10 万行采样，seed 42）</strong>：</p>
+<table>
+<tr><th>指标</th><th>sft_t2t（档一）</th><th>sft_t2t_mt（档二）</th><th>说明</th></tr>
+<tr><td>多轮占比（自然）</td><td>19.4%</td><td><strong>21.7%（train 桶）</strong></td><td>manifest 口径；Belle 多轮密度高</td></tr>
+<tr><td>深多轮（≥5 消息）占比</td><td>3.9%</td><td><strong>12.7%（64.2 万条）</strong></td><td>C 组长会话素材 3 倍扩容</td></tr>
+<tr><td>训练视图多轮有效占比</td><td>—（无上采样）</td><td><strong>41.7%</strong></td><td>展开后有效样本 674.8 万（raw 502 万）</td></tr>
+<tr><td>分桶平衡（train/eval 多轮差）</td><td>0.08pp</td><td><strong>0.05pp</strong></td><td>外部数据自动参与 C5 哈希分桶</td></tr>
+<tr><td>回复重复率（raw 采样）</td><td>8.6%</td><td>7.85%</td><td>C4 键级去重后为 0（跨文件去重多剔 1.5 万条与既有数据重复的 Belle 回复）</td></tr>
+<tr><td>1536 窗口留存完整率</td><td>89.2%</td><td>89.2%</td><td>Belle 对话较短、适配负担无增加；零损失 3.8% 由 C3 训练期过滤</td></tr>
+</table>
+<p><strong>质检材料</strong>：<code>&lt;data_root&gt;/raw/belle_quality_sample_50.jsonl</code>（50 条原始样本供人工抽查）· <code>out/len_profile_sft_mt_1536.json</code> / <code>out/data_profile_sft_mt.json</code> / <code>out/manifest_mt_build.log</code> · <code>out/merge_multiturn.log</code>（过滤漏斗全量数据）。</p>
+<p><strong>4a 长上下文续训：完成且验收门双通过（2026-10-01 00:06-01:05，58 分钟）</strong></p>
+<table>
+<tr><th>验收门</th><th>旧底座（380）</th><th>新底座（续训后）</th><th>变化</th><th>判定</th></tr>
+<tr><td>长文档交叉熵（≥1024 tok，1536 窗，200 条）</td><td>4.121</td><td><strong>3.268</strong></td><td><strong>-20.7%</strong></td><td>✅ 续训直接目标兑现</td></tr>
+<tr><td>短文档交叉熵（&lt;340 tok，防遗忘，200 条）</td><td>4.512</td><td>4.705</td><td>+4.28%</td><td>✅ ≤5% 门（25% 回放起效，贴线通过）</td></tr>
+</table>
+<p>过程数据：子集构建两段式（字符粗筛实测精度仅 56% 触发防呆 → 改「宽松粗筛 + 池内逐行 tokenize 精筛」，精度 100%）；<strong>意外发现：≥768 token 长文档实测仅 33.0 万条（3.9%），远低于 dataeng 报告线性插值估计的 ~25%</strong>——长度分布在该区间衰减远比预估陡，dataeng 的估计方法已修正。子集 = 长文档 329,965 条 + 回放 109,988 条（token 预算 5.4 亿，落在计划 0.5-1B 区间低端）。续训 1 epoch：loss 1.33→1.25、grad_norm 0.17-0.20 稳定、吞吐 215K tok/s（P1a/P2 修复收益持续）、lr 5e-5 正确退火到 5e-6 下限。防覆盖：era1（380 旧底座）与 era2（档一产物）归档齐备。</p>
+<p><strong>增强 SFT：已完成（2026-10-01 01:08 → 10-02 07:03，29.9h，与修正预估 30h 吻合）</strong>：2 epochs 全量（421,722 优化步），val 1.2942 → <strong>1.2677</strong>（best；注：验证集含 Belle 数据、与档一的 1.2666 不可直比），train 收敛至 1.024；数据卡正常落盘（去重 373,746 条；「C3 重映射 0 次」为统计口径缺陷——重映射发生在 DataLoader worker 子进程、计数未汇回主进程，过滤功能本身正常生效）。DPO 07:18 完成（2,146 步）。档二产物归档 <code>out/archive/era3/</code>（新底座 + SFT + DPO 全套）。</p>
+<p><strong>终验收（四套件，三方对照，2026-10-02 07:20）</strong>：</p>
+<table>
+<tr><th>指标</th><th>era1 旧基线</th><th>档一</th><th><strong>档二</strong></th><th>official</th><th>目标线 / 判定</th></tr>
+<tr><td>A 跨轮记忆召回</td><td>16.7%</td><td>50.0%</td><td><strong>75.0%（9/12）</strong></td><td>33.3%</td><td>≥60% ✅（超拉伸目标 70%）</td></tr>
+<tr><td>C 末 3 轮重复率</td><td>0.454</td><td>0.283</td><td><strong>0.086</strong></td><td>0.588</td><td>&lt;0.2 ✅（超目标线 2.3 倍）</td></tr>
+<tr><td>C 前 3 轮重复率</td><td>0.081</td><td>0.062</td><td>0.070</td><td>0.131</td><td>—</td></tr>
+<tr><td>B 各档在题</td><td>全 ✅（短句）</td><td>全 ✅（短句）</td><td>5/6（512 档复读 ❌）</td><td>3/6</td><td>生成质量未达标 ⚠</td></tr>
+<tr><td>B 生成长度</td><td>9-11 tok</td><td>9-11 tok</td><td>11 tok（512 档 192 tok 复读）</td><td>5-18 tok</td><td>&gt;40 tok ❌ 未达成</td></tr>
+</table>
+<details class="analysis"><summary>终验收「预测 vs 实际」分析</summary>
+<p><strong>超预期项 1：跨轮召回 75%（预测 ≥60%）。</strong>逐用例归因给出确凿证据：<strong>Case 1（17 份×35 元+大巴 900 元的算术+跨轮题，历史上三个模型全部崩掉的用例）首次 3/3 全中</strong>——这三个数字是旧模型从未在自己回复中复述过的「仅用户说过的信息」，即「倾听用户」的真实证据（档二归因假设的直接验证）；「李小明」首次精确命中（档一错写成「李明」——Belle 真实多轮数据的「引用用户信息」模式生效）。</p>
+<p><strong>超预期项 2：长会话稳定性 0.086（预测 &lt;0.2）。</strong>前 3/末 3 轮重复率 0.070/0.086——12 轮会话几乎零退化（档一 0.283、official 0.588）。深多轮素材从 3.9% 扩到 12.7% 的直接兑现。</p>
+<p><strong>未达项：Suite B 生成质量（与档一持平的短句形态）+ 新增单点退化。</strong>512 档出现「在讨论中，我提到过，我认为」句式死循环（重复率 0.948）——句式本身恰是从 Belle 学到的「引用讨论历史」模式的退化解，单一档位触发、768-2048 档均正常。4a 续训让底座长文本建模改善 -20.7%，但<strong>未传导到合成历史场景的生成形态</strong>：B 档的敷衍短句依旧。归因判断：B 档评测形态（超长合成历史+固定提问）与 A/C 的真实对话场景差异大，模型在该分布上无训练信号——这属于下一轮议题（合成长上下文对话数据 / 生成长度奖励），不是本轮管线缺陷。</p>
+<p><strong>残余短板的诚实清单</strong>：Case 0 的「程序员/爬山/花花」仍未召回（第 2 轮信息依旧不倾听——「引用用户信息」模式仍未覆盖全部轮位）；B 档短句与 512 复读点；D 套件模型侧裸异常（引擎侧已修，评测侧如实记录）。</p></details>
+</div>
+
+<h2 id="sec11"><span class="sec-no">11</span>终验收、风险与成本</h2>
+<h3>11.1 终验收矩阵（四套件 × 多权重，同种子同口径）</h3>
+<table>
+<tr><th>权重</th><th>A 召回</th><th>C 末 3 轮重复</th><th>B 1024/1536/2048</th><th>说明</th></tr>
+<tr><td>现有 dpo（旧基线）</td><td>16.7%</td><td>0.454</td><td>敷衍短句</td><td>已有</td></tr>
+<tr><td>现有权重 + YaRN 外推</td><td>—</td><td>—</td><td>阶段 0 实测</td><td>纯外推天花板</td></tr>
+<tr><td>档一 dpo（管线修复 + 1536）</td><td><strong>50.0%</strong>（+33.3pp）</td><td><strong>0.283</strong>（-38%）</td><td>全在题但生成仍 9-11 tok 短句</td><td>决策点 1/2 均触发后续动作（§9）</td></tr>
+<tr><td>档二 dpo（续训+多轮增强链）</td><td><strong>75.0%</strong></td><td><strong>0.086</strong></td><td>5/6 在题（512 档单点复读），短句形态未变</td><td>A/C 双达标、B 未达（见阶段 4 分析）</td></tr>
+<tr><td>官方 full_sft</td><td>33.3%</td><td>0.588</td><td>部分跑题</td><td>外部对照</td></tr>
+</table>
+<h3>11.2 风险与回滚</h3>
+<table>
+<tr><th>风险</th><th>影响</th><th>缓解</th></tr>
+<tr><td><strong>输出权重同名覆盖</strong>：工作流保存名硬编码（<code>pretrain</code>/<code>full_sft</code>/<code>dpo</code> → <code>out/*_768.pth</code>），重训会覆盖现有基线权重</td><td>高（不可逆丢基线）</td><td>每次重训前归档 <code>out/*.pth</code> → <code>out/archive/era1/</code>；归档已列入任务 2.3</td></tr>
+<tr><td>检查点身份不明（readiness §6 遗留）</td><td>中</td><td>数据卡嵌入配方与数据指纹；<code>config.json</code> 快照自动记录</td></tr>
+<tr><td>SFT@1536 对 380 底座外推发散</td><td>低</td><td>冒烟先行；回退窗口 1024</td></tr>
+<tr><td>续训（4a）冲乱底座</td><td>中</td><td>学习率 1/10 + 热身 200 步；发散回退 2e-5 / 1024</td></tr>
+<tr><td>上采样过拟合（若触发）</td><td>中</td><td>≤3 倍上限、训练/验证损失差 15% 告警线、复测套件 A/C</td></tr>
+<tr><td>修复破坏现有掩码语义（与官方权重互通的脆耦合）</td><td>高</td><td>逐位一致回归用例先行；工具同源</td></tr>
+<tr><td>长训练中断</td><td>低</td><td><code>save_interval_steps: 1000</code>（约每 8.5 分钟一个恢复点；readiness §1 已验证强杀续训偏差 0.67%）</td></tr>
+</table>
+<h3>11.3 时间轴与成本</h3>
+<table>
+<tr><th>阶段</th><th>内容</th><th>耗时</th></tr>
+<tr><td>0</td><td>YaRN 基线 + 推理止血</td><td>~1 天（可并行），GPU ~0.2h</td></tr>
+<tr><td>1</td><td>管线修复 + 单测 + 复测</td><td>~1 天，无 GPU</td></tr>
+<tr><td>2</td><td>档一 SFT@1536 + DPO</td><td>~26h GPU</td></tr>
+<tr><td>3</td><td>档一验收 + 决策</td><td>~0.5 天，GPU ~0.2h</td></tr>
+<tr><td>3→（触发）</td><td>多轮上采样 + 再训 SFT</td><td>+0.5 天 + 26h GPU</td></tr>
+<tr><td>4a</td><td>续训 → SFT → DPO</td><td>~28h GPU</td></tr>
+<tr><td>4b（兜底）</td><td>从头重训 → SFT → DPO</td><td>~42h GPU</td></tr>
+<tr><td>终验收</td><td>多权重对照 + 归档</td><td>~0.5 天，GPU ~0.5h</td></tr>
+</table>
+<p>最短路径（一切达标、不触发增强与 4b）：<strong>3 个自然日</strong>；全触发上限 ≈ <strong>6 个自然日（GPU 约 80h）</strong>。</p>
+
+<h2 id="seca"><span class="sec-no">A</span>附录 A：命令速查</h2>
+<pre><code># —— 画像 / 基线测量 ——
+uv run python tools/len_profile.py --name sft_t2t --train-seq 1536 --sample 100000
+uv run python tools/len_profile.py --name pretrain_longctx --train-seq 1536
+uv run python tools/data_profile.py --name sft_t2t --sample 100000
+
+# —— 多轮能力评测（四套件，约 12 分钟，cuda:0）——
+uv run python tools/eval_multiturn.py --device cuda:0 --suites ABCD --out out/multiturn_eval_v2.md
+
+# —— 训练（双卡）——
+torchrun --nproc-per-node 2 tools/train.py configs/sft_full_lc.yaml
+torchrun --nproc-per-node 2 tools/train.py configs/pretrain_longctx.yaml
+
+# —— 冒烟（60 步核显存/收敛/吞吐）——
+uv run python tools/train.py configs/smoke/smoke_sft.yaml \
+  --set data.max_seq_len=1536 --set train.batch_size=8 --set train.max_steps=60
+
+# —— 超参临时覆盖（--set 域.字段=值，可重复；未知键报错）——
+uv run python tools/train.py configs/sft_full_lc.yaml --set data.max_seq_len=1024
+
+# —— 单元测试（阶段 1 的守门）——
+uv run pytest tests/test_data/ -q</code></pre>
+
+<h2 id="secb"><span class="sec-no">B</span>附录 B：关键代码位置（已核实）</h2>
+<table>
+<tr><th>位置</th><th>内容</th></tr>
+<tr><td><code>src/minimind_reborn/data/datasets.py:103-106</code></td><td><code>_tail_split</code> 文件尾切验证集（修复五改造点）</td></tr>
+<tr><td><code>src/minimind_reborn/data/datasets.py:139-150</code></td><td><code>PretrainDataset.encode</code> 右截断 + 逐样本填充（无拼包，续训数据策略依据）</td></tr>
+<tr><td><code>src/minimind_reborn/data/datasets.py:195-200</code></td><td><code>SFTDataset._encode_prompt</code> 拦腰截断（修复一改造点）</td></tr>
+<tr><td><code>src/minimind_reborn/data/loss_mask.py:31-33</code></td><td><code>find_response_spans</code> 残段兜底计入损失区间（修复二改造点）</td></tr>
+<tr><td><code>src/minimind_reborn/configuration/schemas.py:81</code></td><td><code>train.init_from</code>（跨范式共享，续训零代码依据）</td></tr>
+<tr><td><code>src/minimind_reborn/training/common/trainer.py:417</code></td><td><code>init_from</code> 统一消费点（恢复 &gt; 微调 &gt; 初始化 三选一）</td></tr>
+<tr><td><code>src/minimind_reborn/models/config.py:65</code> / <code>models/layers.py:45</code></td><td>YaRN <code>original_max_position_embeddings=2048</code> 硬编码（阶段 0 修正点）</td></tr>
+<tr><td><code>tools/eval_multiturn.py:352-354</code></td><td>硬编码权重列表（阶段 3 前置小改点）</td></tr>
+<tr><td><code>tools/len_profile.py:97-119</code></td><td><code>scan_spans</code> 独立实现（须与 SFTDataset 同源化）</td></tr>
+</table>
+
+<ul>
+<li>关联报告：<a href="dataeng.html">LLM 数据工程实测</a> · <a href="multiturn.html">多轮对话能力检测</a> · <a href="hardening.html">修复与加固实录</a> · <a href="index.html">重构实录</a> · <a href="perf_analysis.html">吞吐与 LR 问题分析</a> · <a href="reports.html">报告索引</a></li>
+<li>配套文档：<a href="retrain_plan_longctx_multiturn.md">docs/retrain_plan_longctx_multiturn.md</a>（同内容 markdown 版）</li>
+</ul>
+
+</main>
+</div>
+<footer>生成于 2026-09-28 · 最近更新 2026-10-02 07:40 · minimind_reborn · 档二全链完成：A 召回 75%（超目标）、C 重复 0.086（超目标 2.3 倍）；B 档生成质量遗留</footer>
+<script>
+(function() {
+  const links = Array.from(document.querySelectorAll('nav.toc a'));
+  const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  function update() {
+    let cur = 0;
+    const y = window.scrollY + 90;
+    targets.forEach((t, i) => { if (t.offsetTop <= y) cur = i; });
+    links.forEach((a, i) => a.classList.toggle('active', i === cur));
+  }
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+</script>
+</body>
+</html>

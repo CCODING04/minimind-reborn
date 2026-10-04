@@ -1,0 +1,8 @@
+{
+  "weight": "out/archive/era1/full_sft_768.pth",
+  "val_new_hash_loss_token_avg": 1.2323,
+  "val_new_tokens": 1467764,
+  "val_old_tail_loss_token_avg": 2.0419,
+  "val_old_tokens": 793533,
+  "note": "token 加权平均 CE；新口径=哈希分桶+去重+轮次截断编码；旧口径=文件尾部 0.3% 切片同编码"
+}

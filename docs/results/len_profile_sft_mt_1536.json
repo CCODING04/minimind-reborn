@@ -1,0 +1,35 @@
+{
+  "dataset": "sft_t2t_mt",
+  "train_seq": 1536,
+  "sampled": 100000,
+  "conv_token_len": {
+    "n": 100000,
+    "mean": 1202.7,
+    "p10": 379,
+    "p50": 742,
+    "p90": 2279,
+    "p99": 7789,
+    "max": 66977
+  },
+  "truncated_at_train_seq": 0.1826,
+  "multi_turn": {
+    "share_of_sample": 0.2128,
+    "token_len": {
+      "n": 21282,
+      "mean": 1183.5,
+      "p10": 518,
+      "p50": 1215,
+      "p90": 1623,
+      "p99": 2710,
+      "max": 5860
+    },
+    "truncated_at_train_seq": 0.1417,
+    "damaged_over_seq": 3007,
+    "turn_fitted_rate": 1.0,
+    "hard_truncated_rate": 0.266,
+    "dangling_per_damaged": 0.266,
+    "assistant_span_intact_rate": 0.8916,
+    "assistant_span_survival_rate": 0.4941,
+    "zero_loss_mask_rate": 0.0376
+  }
+}

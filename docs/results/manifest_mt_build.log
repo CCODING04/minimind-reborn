@@ -1,0 +1,14 @@
+manifest built in 5.8 min
+{
+  "kept_total": 5035686,
+  "dedup_removed": 373746,
+  "train_rows": 5020533,
+  "eval_rows": 15153,
+  "multi_turn_train_share": 0.2166,
+  "multi_turn_eval_share": 0.2171,
+  "multi_turn_gap_pp": 0.05,
+  "gap_tolerance_pp": 2.0,
+  "balanced": true
+}
+deep_turns(>=5msg): 641506 multi(>2msg): 1090740
+train effective share multi: 0.4171 effective rows: 6747549

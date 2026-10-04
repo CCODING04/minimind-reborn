@@ -1,0 +1,12 @@
+{
+  "belle_lines": 831036,
+  "parsed": 831036,
+  "bad_parse": 0,
+  "short": 3346,
+  "long": 0,
+  "non_zh": 1224,
+  "probe_hit": 3424,
+  "kept": 823042,
+  "selected": 300000
+}
+合并完成：/home/admin02/Code/WorkSpace/minimind-reproduce/dataset/sft_t2t_mt.jsonl（基础 5109432 行 + 外部 300000 行）
