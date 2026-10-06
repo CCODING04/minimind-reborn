@@ -50,6 +50,33 @@ def test_repetition_penalty_direction():
     assert out[0, 2] == 3.0  # 未出现的 token 不动
 
 
+def test_temperature_applied_exactly_once_per_step(tiny_cfg, monkeypatch):
+    """温度每步恰好施加一次（回归：2026-10-06 前 generator 先除一次、sample_token
+    内再除一次，T>0 时实际生效 T²——默认 0.85 被双重锐化成 0.7225）。"""
+    import minimind_reborn.inference.sampling as sampling
+
+    calls: list[float] = []
+    real = sampling.apply_temperature
+
+    def counting(logits, temperature):
+        calls.append(temperature)
+        return real(logits, temperature)
+
+    monkeypatch.setattr(sampling, "apply_temperature", counting)
+
+    torch.manual_seed(0)
+    model = MiniMindForCausalLM(tiny_cfg).eval()
+    steps = 4
+    generate(
+        model,
+        torch.zeros(1, 4, dtype=torch.long),
+        GenerateConfig(temperature=0.85, max_new_tokens=steps),
+        eos_token_id=None,
+        pad_token_id=0,
+    )
+    assert calls == [0.85] * steps
+
+
 def test_stop_triple_batch_short_and_long(tiny_cfg):
     """停止三重：batch 一短一长 + eos 落在中间——掩码/全停/结构化返回全部生效。
 

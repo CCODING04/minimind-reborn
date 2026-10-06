@@ -13,7 +13,7 @@ from typing import TypedDict
 import torch
 
 from minimind_reborn.configuration.schemas import GenerateConfig
-from minimind_reborn.inference.sampling import apply_repetition_penalty, apply_temperature, sample_token
+from minimind_reborn.inference.sampling import apply_repetition_penalty, sample_token
 from minimind_reborn.models.kv_cache import KVCache
 from minimind_reborn.models.model import MiniMindForCausalLM
 
@@ -77,11 +77,12 @@ def generate(
         feed = input_ids if past_len == 0 else input_ids[:, past_len:]
         logits = model(feed, attention_mask=attention_mask, past_key_values=cache).logits[:, -1, :]
 
-        # 采样链：温度 → 重复惩罚 → top_k/top_p → 多项式/贪心（sampling.py 顺序契约）
-        scaled = apply_temperature(logits, gen.temperature)
+        # 采样链（sampling.py 顺序契约）：重复惩罚在此施加，temperature/top_k/top_p
+        # 由 sample_token 内施加——温度与重复惩罚都是逐元素乘法，可交换（修复：2026-10-06 前
+        # 此处先除一次 T、sample_token 内再除一次，T>0 时实际生效 T²，默认 0.85 → 0.7225）
         if gen.repetition_penalty != 1.0:
-            scaled = apply_repetition_penalty(scaled, input_ids, gen.repetition_penalty)
-        next_token = sample_token(scaled, gen, generator)
+            logits = apply_repetition_penalty(logits, input_ids, gen.repetition_penalty)
+        next_token = sample_token(logits, gen, generator)
 
         # 停止三重之 1：已结束的序列冻结为 eos（后续不会再更新内容）
         if eos_token_id is not None:

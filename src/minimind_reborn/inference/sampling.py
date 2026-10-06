@@ -1,6 +1,8 @@
 """采样纯函数（llm-inference §3）：≤10 行一个、带形状注释、可独立单测。
 
-顺序固定（注释即契约）：temperature → repetition_penalty → top_k → top_p → 采样。
+顺序契约：repetition_penalty（生成内核施加）→ temperature → top_k → top_p → 采样。
+temperature 与 repetition_penalty 皆为逐元素乘法、数学可交换，先后不影响结果；
+temperature 恰好施加一次（在 sample_token 内）——生成内核不得重复施加。
 """
 
 from __future__ import annotations
