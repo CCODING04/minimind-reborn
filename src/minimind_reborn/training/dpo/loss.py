@@ -20,8 +20,13 @@ def dpo_loss(
 ) -> torch.Tensor:
     """sigmoid-DPO：-log σ(β·[(π_c-π_r) - (ref_c-ref_r)])，mask 限定回答区间求和。
 
-    输入 (b, seq)，batch 前半 chosen 后半 rejected。
+    输入 (b, seq)，batch 前半 chosen 后半 rejected（要求偶数——奇数批经
+    `half = b // 2` 切分后形状不匹配，此前以难懂的张量广播错误抛出）。
     """
+    if ref_log_probs.shape[0] % 2 != 0:
+        raise ValueError(
+            f"DPO 拼批要求偶数 batch（前半 chosen、后半 rejected 各半），得到 {ref_log_probs.shape[0]}"
+        )
     ref_log_probs = (ref_log_probs * mask).sum(dim=1)
     policy_log_probs = (policy_log_probs * mask).sum(dim=1)
     half = ref_log_probs.shape[0] // 2
