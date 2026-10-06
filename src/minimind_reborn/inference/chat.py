@@ -70,7 +70,7 @@ class ChatSession:
             self._trim_history()
             prompt = render_chat(self.tokenizer, self.history, open_thinking=open_thinking)
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True)
-        out = self.generate_fn(inputs["input_ids"], inputs["attention_mask"], self.gen)
+        out = self.generate_fn(inputs["input_ids"], self.gen, attention_mask=inputs["attention_mask"])
         prompt_len = inputs["input_ids"].shape[1]
         new_tokens = out["sequences"][0, prompt_len:]
         text = self._decode_truncated(new_tokens)
