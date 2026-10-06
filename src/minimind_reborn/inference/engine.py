@@ -108,12 +108,18 @@ class MiniMindLLM:
 
     # ---------- 内核层（token in / GenerationOutput out） ----------
     def _check_context_length(self, n_tokens: int) -> None:
-        """输入超 RoPE 表上限时显式报错——此前会穿透到 rotary 广播处炸张量形状错误（multiturn #5）。"""
+        """输入+生成总长超 RoPE 表上限时显式报错——此前会穿透到 rotary 广播处炸张量形状错误（multiturn #5）。
+
+        2026-10-06 起 n_tokens 由调用方传\"输入 + 生成上限\"合计：只查输入长度时，
+        KV cache 容量按 prompt+steps 预分配，写溢出保护不会先触发，越界最终落在
+        RoPE 表切片返回空张量后的裸广播形状错误（如输入 32000 + max_new 1024）。
+        """
         limit = self.model.config.max_position_embeddings
         if n_tokens > limit:
             raise ValueError(
-                f"输入长度 {n_tokens} token 超过模型位置编码上限 {limit}。"
-                f"请缩短输入（或缩短对话历史），或在构建模型时开启 inference_rope_scaling 以外推位置编码"
+                f"输入长度+生成上限 {n_tokens} token 超过模型位置编码上限 {limit}。"
+                f"请缩短输入（或缩短对话历史）、调小 max_new_tokens，"
+                f"或在构建模型时开启 inference_rope_scaling 以外推位置编码"
             )
 
     def generate_tokens(
@@ -126,7 +132,8 @@ class MiniMindLLM:
         streamer=None,
         cancel=None,
     ) -> GenerationOutput:
-        self._check_context_length(input_ids.shape[1])
+        steps = max_new_tokens if max_new_tokens is not None else gen.max_new_tokens
+        self._check_context_length(input_ids.shape[1] + steps)
         input_ids = input_ids.to(self.device)
         if attention_mask is not None:
             attention_mask = attention_mask.to(self.device)
@@ -161,7 +168,7 @@ class MiniMindLLM:
         else:
             prompt = render_chat(self.tokenizer, messages, tools=tools, open_thinking=open_thinking)
         inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True).to(self.device)
-        self._check_context_length(inputs["input_ids"].shape[1])
+        self._check_context_length(inputs["input_ids"].shape[1] + gen.max_new_tokens)
         out = generate(
             self.model,
             inputs["input_ids"],

@@ -40,6 +40,16 @@ def test_engine_generate_text_guard(tiny_cfg, tokenizer):
         llm.generate_text([{"role": "user", "content": long_text}])
 
 
+def test_engine_rejects_prompt_plus_max_new_over_limit(tiny_cfg, tokenizer):
+    """输入本身在限内、输入+生成上限合计超限也要显式拦截（回归：2026-10-06 前只查
+    输入长度，KV 容量按 prompt+steps 预分配，越界最终落在 RoPE 表切片的裸广播错误）。"""
+    llm = _make_llm(tiny_cfg, tokenizer)
+    limit = tiny_cfg.max_position_embeddings  # 128
+    ids = torch.zeros(1, 16, dtype=torch.long)
+    with pytest.raises(ValueError, match="位置编码上限"):
+        llm.generate_tokens(ids, GenerateConfig(max_new_tokens=limit))  # 16+128 > 128
+
+
 # ---------- ChatSession 历史滑窗（multiturn #3 推理侧止血） ----------
 
 def _stub_generate(eos_id: int):
