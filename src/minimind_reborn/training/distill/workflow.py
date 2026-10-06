@@ -12,6 +12,7 @@ from minimind_reborn.models.weights import load_inference_weights, resolve_weigh
 from minimind_reborn.training.common.setup import build_lm_dataset, build_model, load_tokenizer
 from minimind_reborn.training.common.trainer import Trainer
 from minimind_reborn.training.distill.loss import distillation_loss
+from minimind_reborn.utils import dist
 
 logger = get_logger("distill")
 
@@ -20,6 +21,10 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0) -> Tr
     setup_logging(cfg.run_dir)
     tokenizer = load_tokenizer()
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    # 教师设备跟随 local_rank（对齐 Trainer/RLSession 的折算；修复：2026-10-06 前裸
+    # "cuda" 在多卡 DDP 下 rank≥1 的教师落 cuda:0，教师前向直接 RuntimeError）
+    if dist.is_initialized():
+        device = f"cuda:{local_rank}"
     student = build_model(cfg, tokenizer)
 
     dc = cfg.distill

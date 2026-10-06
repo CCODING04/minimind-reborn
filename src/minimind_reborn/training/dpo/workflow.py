@@ -10,6 +10,7 @@ from minimind_reborn.models.weights import load_inference_weights, resolve_weigh
 from minimind_reborn.training.common.setup import build_model, build_preference_dataset, load_tokenizer
 from minimind_reborn.training.common.trainer import Trainer
 from minimind_reborn.training.dpo.loss import dpo_loss, logits_to_log_probs
+from minimind_reborn.utils import dist
 
 logger = get_logger("dpo")
 
@@ -19,13 +20,18 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0) -> Tr
     tokenizer = load_tokenizer()
     model = build_model(cfg, tokenizer)
 
-    # 参考模型：与策略同权重、冻结、只前向——引用漂移的"锚"
+    # 参考模型：与策略同权重、冻结、只前向——引用漂移的"锚"。
+    # 设备跟随 local_rank（对齐 Trainer/RLSession 的折算；修复：2026-10-06 前裸 "cuda"
+    # 在多卡 DDP 下 rank≥1 的 ref 落 cuda:0，ref 前向直接 RuntimeError）
     ref_model = build_model(cfg, tokenizer)
     init = resolve_weight_path(
         cfg.train.init_from or "full_sft", cfg.output_dir, cfg.model.hidden_size, cfg.model.use_moe
     )
+    ref_device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    if dist.is_initialized():
+        ref_device = f"cuda:{local_rank}"
     load_inference_weights(ref_model, init, strict=True)
-    ref_model.eval().requires_grad_(False).to(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    ref_model.eval().requires_grad_(False).to(ref_device)
     load_inference_weights(model, init, strict=True)  # 策略模型同起点（Trainer 的 resume 在其后仍可接管）
     logger.info("DPO 起点：%s | beta=%.3f", init.name, cfg.dpo.beta)
 
