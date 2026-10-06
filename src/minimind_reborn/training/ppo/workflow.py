@@ -128,7 +128,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
                 )
                 session.close()
                 return actor
-            if step % t.save_interval_steps == 0 or step == len(loader):
+            if step % t.save_interval_steps == 0 or step == start_step + len(loader):
                 session.save(
                     actor,
                     actor_optimizer,

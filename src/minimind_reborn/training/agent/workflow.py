@@ -240,7 +240,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
             stats, loss_val = _agent_step(
                 cfg, session, model, ref_model, rollout_engine, tokenizer, batch, optimizer, TOOLS
             )
-            if step % t.gradient_accumulation_steps == 0 or step == len(loader):
+            if step % t.gradient_accumulation_steps == 0 or step == start_step + len(loader):
                 torch.nn.utils.clip_grad_norm_([p for p in model.parameters() if p.requires_grad], t.grad_clip)
                 optimizer.step()
                 scheduler.step()
@@ -261,7 +261,7 @@ def run(cfg: RunConfig, *, device: str | None = None, local_rank: int = 0):
                 rollout_engine.update_policy(model)
                 session.close()
                 return model
-            if step % t.save_interval_steps == 0 or step == len(loader):
+            if step % t.save_interval_steps == 0 or step == start_step + len(loader):
                 session.save(model, optimizer, scheduler, epoch, step, extra_states={"scheduler": scheduler})
                 rollout_engine.update_policy(model)
         start_step = 0
