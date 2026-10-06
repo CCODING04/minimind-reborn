@@ -8,7 +8,7 @@
 
 稳定性要点：哈希用 hashlib.md5（跨进程/跨机器稳定），不用 Python hash()（受
 PYTHONHASHSEED 盐值影响，同一进程两次运行结果都不同）。以源文件 mtime_ns+size
-指纹失效重算；写入走 tmp+rename 原子替换。
++分桶粒度（eval_ratio 派生）指纹失效重算；写入走 tmp+rename 原子替换。
 """
 
 from __future__ import annotations
@@ -58,9 +58,12 @@ class Manifest:
         return len(self.reply_hash)
 
 
-def _fingerprint(path: Path) -> str:
+def _fingerprint(path: Path, bucket_take: int) -> str:
     st = path.stat()
-    return f"{st.st_mtime_ns}:{st.st_size}"
+    # bucket_take 进指纹：同文件换 eval_ratio 必须重分桶（修复：2026-10-06 前仅
+    # mtime:size，sft_full(0.003)/eval_compare(0.005) 等共用同一 jsonl 时，先跑者
+    # 的分桶被静默复用，后跑者的验证集比例不等于其配置声称值）
+    return f"{st.st_mtime_ns}:{st.st_size}:{bucket_take}"
 
 
 def manifest_path(jsonl_path: str | Path) -> Path:
@@ -74,10 +77,15 @@ def is_multi_turn(n_messages: int) -> bool:
 
 
 def load_or_build(jsonl_path: str | Path, eval_ratio: float) -> Manifest:
-    """读旁车清单；指纹不匹配或缺失时全量扫描重建（原子写）。"""
+    """读旁车清单；指纹不匹配或缺失时全量扫描重建（原子写）。
+
+    指纹含源文件 mtime_ns+size 与分桶粒度 bucket_take（由 eval_ratio 派生）——
+    任一变化都重建。旧格式旁车文件指纹必然不匹配，首次访问时自动重建一次。
+    """
     path = Path(jsonl_path)
     mpath = manifest_path(path)
-    fp = _fingerprint(path)
+    bucket_take = max(0, round(eval_ratio * 1000))  # 0 = 关闭评估（schemas 的 eval_ratio=0 语义）
+    fp = _fingerprint(path, bucket_take)
     if mpath.exists():
         try:
             with np.load(mpath, allow_pickle=False) as z:
@@ -91,7 +99,6 @@ def load_or_build(jsonl_path: str | Path, eval_ratio: float) -> Manifest:
     reply_hashes: list[int] = []
     n_messages: list[int] = []
     is_eval_flags: list[bool] = []
-    bucket_take = max(1, round(eval_ratio * 1000))
     with path.open("rb") as f:
         for line in f:
             if not line.strip():

@@ -168,6 +168,22 @@ def test_stable_hash_is_process_independent():
     assert stable_hash(normalize_text("Hello, 世界！")) == stable_hash(normalize_text("hello 世界"))
 
 
+def test_manifest_cache_key_includes_eval_ratio(tmp_path):
+    """同文件换 eval_ratio 必须重分桶（回归：2026-10-06 前指纹仅 mtime:size，
+    先跑者的分桶被静默复用——sft_full(0.003) 与 eval 工具(0.005) 共用 jsonl 时
+    后跑者的验证集比例不等于其配置声称值）。"""
+    p = tmp_path / "s.jsonl"
+    _write_sft(p, [_conv(f"问题{i}", f"回答{i}") for i in range(200)])
+    m_small = load_or_build(p, eval_ratio=0.05)
+    m_large = load_or_build(p, eval_ratio=0.5)  # 文件未变，仅 ratio 不同
+    assert m_large.fingerprint != m_small.fingerprint
+    assert int(m_large.is_eval.sum()) > int(m_small.is_eval.sum()) * 4  # 5% vs 50%
+    m_zero = load_or_build(p, eval_ratio=0.0)  # 0 = 关闭评估
+    assert int(m_zero.is_eval.sum()) == 0
+    m_again = load_or_build(p, eval_ratio=0.5)  # 相同 ratio 命中缓存
+    assert m_again.is_eval.tolist() == m_large.is_eval.tolist()
+
+
 def test_split_balance_report_and_assertion_inputs(tmp_path):
     """多轮占比差 ≤2pp 断言的输入：均衡数据 gap 小，构造性检查通过。"""
     p = tmp_path / "s.jsonl"
