@@ -76,7 +76,9 @@ def our_generate(model, tokenizer, prompt: str, *, max_new_tokens: int, greedy: 
     from minimind_reborn.inference.generator import generate
 
     inputs = tokenizer(prompt, return_tensors="pt", truncation=True).to(model.device)
-    gen = GenerateConfig(temperature=0.85, top_p=0.9, top_k=50)
+    # greedy 必须真正走 T=0（修复：2026-10-06 前恒 T=0.85 采样——贪心一致性对比
+    # 实测的是「我方采样 vs 官方贪心」，逐位一致率数字是噪声）
+    gen = GenerateConfig(temperature=0.0 if greedy else 0.85, top_p=0.9, top_k=50)
     torch.cuda.reset_peak_memory_stats()
     t0 = time.perf_counter()
     out = generate(
