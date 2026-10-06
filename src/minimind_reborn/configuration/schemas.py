@@ -25,7 +25,7 @@ class ModelConfig:
     use_moe: bool = False
     vocab_size: int = 6400  # 官方 tokenizer 词表；运行时与 tokenizer 双源断言
     num_attention_heads: int = 8
-    num_key_value_heads: int = 4  # None 表示 MHA；给 n<n_q 即 GQA
+    num_key_value_heads: int = 4  # 等于 num_attention_heads 即 MHA；n<n_q 即 GQA（yaml/--set 只收 int，None 仅 MiniMindConfig Python API 支持）
     head_dim: int | None = None  # 派生：hidden_size // num_attention_heads（哨兵）
     intermediate_size: int | None = None  # 派生：ceil(hidden_size·π/64)·64（官方公式）
     dropout: float = 0.0

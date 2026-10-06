@@ -1,7 +1,9 @@
 """组合子模块：RMSNorm / RoPE / GQA 工具。
 
-数值纪律（training §2）：norm、rotary 等半精度下易失稳的算子显式升 fp32
-计算、算完 `type_as` 回落——写法固定在此处，不依赖 autocast 内部行为。
+数值纪律（training §2）：norm 等含统计量（归约）的算子显式升 fp32 计算、
+算完 `type_as` 回落——写法固定在此处，不依赖 autocast 内部行为。
+rotary 为逐元素乘加、无归约统计，按输入精度直算（`.to(q.dtype)` 仅声明返回
+精度；训练 autocast 下 bf16×fp32 类型提升仍得到 fp32）。
 """
 
 from __future__ import annotations

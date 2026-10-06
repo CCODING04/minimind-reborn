@@ -35,7 +35,11 @@ class LoRA(nn.Module):
 
 
 def apply_lora(model: Any, rank: int = 16) -> None:
-    """对方阵 Linear（in==out，即 q/k/v/o_proj 等）注入 LoRA 并接管 forward。"""
+    """对方阵 Linear（in==out）注入 LoRA 并接管 forward。
+
+    只挂方阵投影：默认 GQA 拓扑下 q/o_proj 是 768→768 方阵、可注入；k/v_proj 是
+    768→384 非方阵、不注入——注意力四投影实际只有 q/o 两侧有旁路。
+    """
     for module in model.modules():
         if isinstance(module, nn.Linear) and module.in_features == module.out_features:
             lora = LoRA(module.in_features, module.out_features, rank=rank).to(model.device)
